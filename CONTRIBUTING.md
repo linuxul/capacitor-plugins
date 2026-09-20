@@ -19,19 +19,26 @@ See [`CONTRIBUTING.md`](https://github.com/ionic-team/capacitor/blob/HEAD/CONTRI
     brew install swiftlint
     ```
 
-Sometimes, it may be necessary to work on Capacitor in parallel with the plugin(s). In this case, a few extra steps are necessary:
+4. Install ktlint to lint and format the Kotlin code.
 
-4. Follow the Capacitor repo's [local setup instructions](https://github.com/ionic-team/capacitor/blob/HEAD/CONTRIBUTING.md#local-setup).
-5. Toggle each plugin to use your local copy of Capacitor.
+    ```shell
+    brew install ktlint
+    ```
+
+These plugins are built for a fork of Capacitor whose runtimes are written in Kotlin and Swift, and they do not compile against the `@capacitor/android` and `@capacitor/ios` packages on npm. Before verifying a plugin, point the plugins at a checkout of that fork:
+
+5. Follow the fork's local setup instructions in its `CONTRIBUTING.md`.
+6. Toggle each plugin to use your local copy of Capacitor. Pass the path to the checkout unless it is a sibling directory named `capacitor`.
 
     ```shell
     npm install
-    npm run toggle-local
+    npm run toggle-local -- ../path/to/capacitor
+    npm run set-settings-gradle-for-monorepo
     ```
 
     :bulb: *Remember not to commit unnecessary changes to `package.json` and `package-lock.json`.*
 
-6. Make sure your app is using local copies of the Capacitor plugin and Capacitor core.
+7. Make sure your app is using local copies of the Capacitor plugin and Capacitor core.
 
     ```shell
     cd my-app/
@@ -40,6 +47,19 @@ Sometimes, it may be necessary to work on Capacitor in parallel with the plugin(
     npm install ../path/to/capacitor/android
     npm install ../path/to/capacitor/ios
     ```
+
+### Verifying a Plugin
+
+Each plugin has the same scripts. Run them from the plugin's directory:
+
+```shell
+npm run lint             # ESLint, Prettier, SwiftLint and ktlint; `npm run fmt` fixes what can be fixed
+npm run verify:android   # Gradle build and unit tests against the Kotlin runtime
+npm run verify:ios       # xcodebuild against the Swift runtime
+npm run verify:web
+```
+
+`verify:ios` builds the plugin's Swift package on its own. In an app, the plugin's `capacitor-swift-pm` dependency is replaced by the `@capacitor/ios` that the app installed; for a standalone build the package reads the runtime's location from `CAPACITOR_IOS_PATH`, which the script sets to the installed `@capacitor/ios`. Set the variable yourself to build against another checkout, and leave it unset when building an app.
 
 ### Monorepo Scripts
 
@@ -51,9 +71,7 @@ This script is for setting the version (or version range) of Capacitor packages 
 
 #### `npm run toggle-local`
 
-> :memo: Requires [Capacitor](https://github.com/ionic-team/capacitor/) to be cloned in a sibling directory.
-
-This script is for switching between Capacitor packages from npm and Capacitor packages installed locally.
+This script is for switching between Capacitor packages from npm and Capacitor packages installed locally. It takes the path to the Capacitor checkout, `npm run toggle-local -- ../path/to/capacitor`, and defaults to a sibling directory named `capacitor`. Run it again to switch back.
 
 > If you get npm errors, you can try installing from scratch:
 >
@@ -67,7 +85,7 @@ This script is for switching between Capacitor packages from npm and Capacitor p
 > 1. Install with local dependencies:
 >
 >     ```
->     npm run toggle-local
+>     npm run toggle-local -- ../path/to/capacitor
 >     ```
 
 #### `npm run apply-patches "<package>"`

@@ -20,6 +20,10 @@ const readMarkerFile = async (p) => {
   }
 };
 
+// Optional argument: path to the Capacitor checkout, e.g. `npm run toggle-local -- ../my-capacitor-fork`.
+// Defaults to a `capacitor` directory next to this repository.
+const capacitorRepo = process.argv[2] ? resolve(process.cwd(), process.argv[2]) : resolve(root, '..', 'capacitor');
+
 execute(async () => {
   const packages = await ls();
 
@@ -51,7 +55,7 @@ execute(async () => {
           : Object.fromEntries(
               Object.entries(markerFileContents[p.name]).map(([k]) => [
                 k,
-                `file:../../capacitor/${k.replace(/^@capacitor\//, '')}`,
+                `file:${resolve(capacitorRepo, k.replace(/^@capacitor\//, ''))}`,
               ]),
             ),
         'devDependencies',

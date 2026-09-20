@@ -93,6 +93,11 @@ jobs:
             */node_modules
           key: ${{ runner.os }}-dependency-caching-${{ hashFiles('package.json', '*/package.json') }}
       - run: npm install
+      - name: Install ktlint
+        run: |
+          curl -sSLO https://github.com/pinterest/ktlint/releases/download/1.8.0/ktlint
+          chmod a+x ktlint
+          sudo mv ktlint /usr/local/bin/
       - run: npm run lint
         working-directory: ${{ matrix.plugin }}
 
