@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Capacitor
 
 @objc(DevicePlugin)
@@ -6,11 +7,11 @@ public class DevicePlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "DevicePlugin"
     public let jsName = "Device"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "getId", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getInfo", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getBatteryInfo", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getLanguageCode", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getLanguageTag", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "getId", returnType: .promise),
+        CAPPluginMethod(name: "getInfo", returnType: .promise),
+        CAPPluginMethod(name: "getBatteryInfo", returnType: .promise),
+        CAPPluginMethod(name: "getLanguageCode", returnType: .promise),
+        CAPPluginMethod(name: "getLanguageTag", returnType: .promise)
     ]
     private let implementation = Device()
 
