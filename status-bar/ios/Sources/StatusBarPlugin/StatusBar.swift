@@ -1,5 +1,6 @@
 import Foundation
 import Capacitor
+import UIKit
 
 public class StatusBar {
 

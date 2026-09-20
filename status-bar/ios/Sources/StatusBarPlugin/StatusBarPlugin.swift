@@ -1,5 +1,6 @@
 import Foundation
 import Capacitor
+import UIKit
 
 /**
  * StatusBar plugin. Requires "View controller-based status bar appearance" to
@@ -10,12 +11,12 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "StatusBarPlugin"
     public let jsName = "StatusBar"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "setStyle", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "setBackgroundColor", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "show", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "hide", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getInfo", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "setOverlaysWebView", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "setStyle", returnType: .promise),
+        CAPPluginMethod(name: "setBackgroundColor", returnType: .promise),
+        CAPPluginMethod(name: "show", returnType: .promise),
+        CAPPluginMethod(name: "hide", returnType: .promise),
+        CAPPluginMethod(name: "getInfo", returnType: .promise),
+        CAPPluginMethod(name: "setOverlaysWebView", returnType: .promise)
     ]
     private var statusBar: StatusBar?
     private let statusBarVisibilityChanged = "statusBarVisibilityChanged"
@@ -52,7 +53,7 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func setStyle(_ call: CAPPluginCall) {
-        let options = call.options!
+        let options = call.options
         if let styleString = options["style"] as? String {
             statusBar?.setStyle(style(fromString: styleString))
         }

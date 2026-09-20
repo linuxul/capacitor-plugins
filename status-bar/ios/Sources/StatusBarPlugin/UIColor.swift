@@ -1,4 +1,5 @@
 import Capacitor
+import UIKit
 
 public extension CapacitorExtensionTypeWrapper where T: UIColor {
 
