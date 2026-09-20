@@ -8,12 +8,12 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "CAPCameraPlugin"
     public let jsName = "Camera"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "getPhoto", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "pickImages", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "pickLimitedLibraryPhotos", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getLimitedLibraryPhotos", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "getPhoto", returnType: .promise),
+        CAPPluginMethod(name: "pickImages", returnType: .promise),
+        CAPPluginMethod(name: "checkPermissions", returnType: .promise),
+        CAPPluginMethod(name: "requestPermissions", returnType: .promise),
+        CAPPluginMethod(name: "pickLimitedLibraryPhotos", returnType: .promise),
+        CAPPluginMethod(name: "getLimitedLibraryPhotos", returnType: .promise)
     ]
     private var call: CAPPluginCall?
     private var settings = CameraSettings()
