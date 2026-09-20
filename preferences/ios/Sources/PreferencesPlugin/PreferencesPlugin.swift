@@ -6,14 +6,14 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "PreferencesPlugin"
     public let jsName = "Preferences"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "configure", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "get", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "set", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "keys", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "clear", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "migrate", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "removeOld", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "configure", returnType: .promise),
+        CAPPluginMethod(name: "get", returnType: .promise),
+        CAPPluginMethod(name: "set", returnType: .promise),
+        CAPPluginMethod(name: "remove", returnType: .promise),
+        CAPPluginMethod(name: "keys", returnType: .promise),
+        CAPPluginMethod(name: "clear", returnType: .promise),
+        CAPPluginMethod(name: "migrate", returnType: .promise),
+        CAPPluginMethod(name: "removeOld", returnType: .promise)
     ]
     private var preferences = Preferences(with: PreferencesConfiguration())
 
