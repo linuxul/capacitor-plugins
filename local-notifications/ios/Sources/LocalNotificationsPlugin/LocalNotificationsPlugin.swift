@@ -1,5 +1,6 @@
 import Foundation
 import Capacitor
+import UIKit
 import UserNotifications
 
 enum LocalNotificationError: LocalizedError {
@@ -29,21 +30,21 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "LocalNotificationsPlugin"
     public let jsName = "LocalNotifications"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "schedule", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "checkExactNotificationSetting", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "changeExactNotificationSetting", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "cancel", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getPending", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "registerActionTypes", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "areEnabled", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getDeliveredNotifications", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "removeAllDeliveredNotifications", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "removeDeliveredNotifications", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "createChannel", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "deleteChannel", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "listChannels", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "schedule", returnType: .promise),
+        CAPPluginMethod(name: "requestPermissions", returnType: .promise),
+        CAPPluginMethod(name: "checkPermissions", returnType: .promise),
+        CAPPluginMethod(name: "checkExactNotificationSetting", returnType: .promise),
+        CAPPluginMethod(name: "changeExactNotificationSetting", returnType: .promise),
+        CAPPluginMethod(name: "cancel", returnType: .promise),
+        CAPPluginMethod(name: "getPending", returnType: .promise),
+        CAPPluginMethod(name: "registerActionTypes", returnType: .promise),
+        CAPPluginMethod(name: "areEnabled", returnType: .promise),
+        CAPPluginMethod(name: "getDeliveredNotifications", returnType: .promise),
+        CAPPluginMethod(name: "removeAllDeliveredNotifications", returnType: .promise),
+        CAPPluginMethod(name: "removeDeliveredNotifications", returnType: .promise),
+        CAPPluginMethod(name: "createChannel", returnType: .promise),
+        CAPPluginMethod(name: "deleteChannel", returnType: .promise),
+        CAPPluginMethod(name: "listChannels", returnType: .promise)
     ]
     private let notificationDelegationHandler = LocalNotificationsHandler()
 
@@ -253,12 +254,6 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
 
         if let threadIdentifier = notification["threadIdentifier"] as? String {
             content.threadIdentifier = threadIdentifier
-        }
-
-        if let summaryArgument = notification["summaryArgument"] as? String {
-            if #unavailable(iOS 15.0) {
-                content.summaryArgument = summaryArgument
-            }
         }
 
         if let relevanceScore = notification["relevanceScore"] as? Double {
