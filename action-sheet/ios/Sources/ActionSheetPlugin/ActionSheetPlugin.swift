@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Capacitor
 
 /**
@@ -10,7 +11,7 @@ public class ActionSheetPlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentat
     public let identifier = "ActionSheetPlugin"
     public let jsName = "ActionSheet"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "showActions", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "showActions", returnType: .promise)
     ]
     private let implementation = ActionSheet()
     private var currentCall: CAPPluginCall?
