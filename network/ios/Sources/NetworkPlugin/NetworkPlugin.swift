@@ -6,7 +6,7 @@ public class NetworkPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "CAPNetworkPlugin"
     public let jsName = "Network"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "getStatus", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "getStatus", returnType: .promise)
     ]
     private var implementation: Network?
 
