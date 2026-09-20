@@ -1,5 +1,6 @@
 import Foundation
 import Capacitor
+import UIKit
 import UserNotifications
 
 enum PushNotificationError: Error {
@@ -18,16 +19,16 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "PushNotificationsPlugin"
     public let jsName = "PushNotifications"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "register", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "unregister", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getDeliveredNotifications", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "removeAllDeliveredNotifications", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "removeDeliveredNotifications", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "createChannel", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "listChannels", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "deleteChannel", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "register", returnType: .promise),
+        CAPPluginMethod(name: "unregister", returnType: .promise),
+        CAPPluginMethod(name: "checkPermissions", returnType: .promise),
+        CAPPluginMethod(name: "requestPermissions", returnType: .promise),
+        CAPPluginMethod(name: "getDeliveredNotifications", returnType: .promise),
+        CAPPluginMethod(name: "removeAllDeliveredNotifications", returnType: .promise),
+        CAPPluginMethod(name: "removeDeliveredNotifications", returnType: .promise),
+        CAPPluginMethod(name: "createChannel", returnType: .promise),
+        CAPPluginMethod(name: "listChannels", returnType: .promise),
+        CAPPluginMethod(name: "deleteChannel", returnType: .promise)
     ]
     private let notificationDelegateHandler = PushNotificationsHandler()
     private var appDelegateRegistrationCalled: Bool = false
