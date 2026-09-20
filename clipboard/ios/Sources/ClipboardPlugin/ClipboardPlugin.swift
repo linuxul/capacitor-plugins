@@ -6,8 +6,8 @@ public class ClipboardPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ClipboardPlugin"
     public let jsName = "Clipboard"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "read", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "write", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "read", returnType: .promise),
+        CAPPluginMethod(name: "write", returnType: .promise)
     ]
     private let implementation = Clipboard()
 
