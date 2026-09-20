@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Capacitor
 
 @objc(ScreenReaderPlugin)
@@ -6,8 +7,8 @@ public class ScreenReaderPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ScreenReaderPlugin"
     public let jsName = "ScreenReader"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "speak", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "isEnabled", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "speak", returnType: .promise),
+        CAPPluginMethod(name: "isEnabled", returnType: .promise)
     ]
     static let stateChangeEvent = "stateChange"
 
