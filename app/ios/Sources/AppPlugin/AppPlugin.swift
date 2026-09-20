@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Capacitor
 
 @objc(AppPlugin)
@@ -6,13 +7,13 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "AppPlugin"
     public let jsName = "App"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "exitApp", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getInfo", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getAppLanguage", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getLaunchUrl", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getState", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "minimizeApp", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "toggleBackButtonHandler", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "exitApp", returnType: .promise),
+        CAPPluginMethod(name: "getInfo", returnType: .promise),
+        CAPPluginMethod(name: "getAppLanguage", returnType: .promise),
+        CAPPluginMethod(name: "getLaunchUrl", returnType: .promise),
+        CAPPluginMethod(name: "getState", returnType: .promise),
+        CAPPluginMethod(name: "minimizeApp", returnType: .promise),
+        CAPPluginMethod(name: "toggleBackButtonHandler", returnType: .promise)
     ]
     private var observers: [NSObjectProtocol] = []
 
