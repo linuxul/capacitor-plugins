@@ -6,7 +6,7 @@ public class ToastPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ToastPlugin"
     public let jsName = "Toast"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "show", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "show", returnType: .promise)
     ]
 
     @objc func show(_ call: CAPPluginCall) {
