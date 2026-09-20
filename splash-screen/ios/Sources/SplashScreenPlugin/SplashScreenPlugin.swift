@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Capacitor
 
 @objc(SplashScreenPlugin)
@@ -6,8 +7,8 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "SplashScreenPlugin"
     public let jsName = "SplashScreen"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "show", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "hide", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "show", returnType: .promise),
+        CAPPluginMethod(name: "hide", returnType: .promise)
     ]
     private var splashScreen: SplashScreen?
 
