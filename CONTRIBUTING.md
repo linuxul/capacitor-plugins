@@ -25,7 +25,7 @@ See [`CONTRIBUTING.md`](https://github.com/ionic-team/capacitor/blob/HEAD/CONTRI
     brew install ktlint
     ```
 
-These plugins are built for a fork of Capacitor whose runtimes are written in Kotlin and Swift, and they do not compile against the `@capacitor/android` and `@capacitor/ios` packages on npm. Before verifying a plugin, point the plugins at a checkout of that fork:
+These plugins are built for a fork of Capacitor whose runtimes are written in Kotlin and Swift, and they do not compile against the `@capacitor/android` and `@capacitor/ios` packages on npm. The fork is not published to npm; each plugin's `devDependencies` install its packages from the tarballs attached to a release of [linuxul/capacitor](https://github.com/linuxul/capacitor/releases), so `npm install` is enough to verify against that release. To verify against unreleased changes of the fork, point the plugins at a checkout of it instead:
 
 5. Follow the fork's local setup instructions in its `CONTRIBUTING.md`.
 6. Toggle each plugin to use your local copy of Capacitor. Pass the path to the checkout unless it is a sibling directory named `capacitor`.
@@ -71,7 +71,7 @@ This script is for setting the version (or version range) of Capacitor packages 
 
 #### `npm run toggle-local`
 
-This script is for switching between Capacitor packages from npm and Capacitor packages installed locally. It takes the path to the Capacitor checkout, `npm run toggle-local -- ../path/to/capacitor`, and defaults to a sibling directory named `capacitor`. Run it again to switch back.
+This script is for switching between Capacitor packages from the fork's release tarballs and Capacitor packages installed locally. It takes the path to the Capacitor checkout, `npm run toggle-local -- ../path/to/capacitor`, and defaults to a sibling directory named `capacitor`. Run it again to switch back.
 
 > If you get npm errors, you can try installing from scratch:
 >
