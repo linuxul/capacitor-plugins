@@ -17,6 +17,9 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
     ]
     private var preferences = Preferences(with: PreferencesConfiguration())
 
+    // Every method is synchronous: the bridge calls them one after the other on its queue, so a get sees the set and
+    // remove calls made before it. Async methods would not keep that order.
+
     func configure(_ call: CAPPluginCall) {
         let group = call.getString("group")
         let configuration: PreferencesConfiguration
@@ -35,10 +38,9 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
-    func get(_ call: CAPPluginCall) {
+    func get(_ call: CAPPluginCall) throws {
         guard let key = call.getString("key") else {
-            call.reject("Must provide a key")
-            return
+            throw CAPPluginError("Must provide a key")
         }
 
         let value = preferences.get(by: key)
@@ -48,10 +50,9 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
-    func set(_ call: CAPPluginCall) {
+    func set(_ call: CAPPluginCall) throws {
         guard let key = call.getString("key") else {
-            call.reject("Must provide a key")
-            return
+            throw CAPPluginError("Must provide a key")
         }
         let value = call.getString("value", "")
 
@@ -59,10 +60,9 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
-    func remove(_ call: CAPPluginCall) {
+    func remove(_ call: CAPPluginCall) throws {
         guard let key = call.getString("key") else {
-            call.reject("Must provide a key")
-            return
+            throw CAPPluginError("Must provide a key")
         }
 
         preferences.remove(by: key)
