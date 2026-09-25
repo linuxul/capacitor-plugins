@@ -55,16 +55,23 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func setStyle(_ call: CAPPluginCall) {
         let options = call.options
         if let styleString = options["style"] as? String {
-            statusBar?.setStyle(style(fromString: styleString))
+            let barStyle = style(fromString: styleString)
+            DispatchQueue.main.async { [weak self] in
+                self?.statusBar?.setStyle(barStyle)
+            }
         }
         call.resolve([:])
     }
 
     @objc func setBackgroundColor(_ call: CAPPluginCall) {
-        guard
-            let hexString = call.options["color"] as? String,
-            let color = UIColor.capacitor.color(fromHex: hexString)
-        else { return }
+        guard let hexString = call.options["color"] as? String else {
+            call.reject("Color must be provided")
+            return
+        }
+        guard let color = UIColor.capacitor.color(fromHex: hexString) else {
+            call.reject("Invalid color provided. Must be a hex string (ex: #ff0000)")
+            return
+        }
         DispatchQueue.main.async { [weak self] in
             self?.statusBar?.setBackgroundColor(color)
         }
@@ -75,12 +82,10 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
         let animation = call.getString("animation", "FADE")
         DispatchQueue.main.async { [weak self] in
             self?.statusBar?.hide(animation: animation)
-            guard
-                let info = self?.statusBar?.getInfo(),
-                let dict = self?.toDict(info),
-                let event = self?.statusBarVisibilityChanged
-            else { return }
-            self?.notifyListeners(event, data: dict)
+            guard let self, let info = self.statusBar?.getInfo() else {
+                return
+            }
+            self.notifyListeners(self.statusBarVisibilityChanged, data: StatusBarPlugin.toDict(info))
         }
         call.resolve()
     }
@@ -89,47 +94,46 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
         let animation = call.getString("animation", "FADE")
         DispatchQueue.main.async { [weak self] in
             self?.statusBar?.show(animation: animation)
-            guard
-                let info = self?.statusBar?.getInfo(),
-                let dict = self?.toDict(info),
-                let event = self?.statusBarVisibilityChanged
-            else { return }
-            self?.notifyListeners(event, data: dict)
+            guard let self, let info = self.statusBar?.getInfo() else {
+                return
+            }
+            self.notifyListeners(self.statusBarVisibilityChanged, data: StatusBarPlugin.toDict(info))
         }
         call.resolve()
     }
 
     @objc func getInfo(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
-            guard
-                let info = self?.statusBar?.getInfo(),
-                let dict = self?.toDict(info)
-            else { return }
-            call.resolve(dict)
+            guard let info = self?.statusBar?.getInfo() else {
+                call.reject("Unable to get the status bar info: the status bar is not available")
+                return
+            }
+            call.resolve(StatusBarPlugin.toDict(info))
         }
     }
 
     @objc func setOverlaysWebView(_ call: CAPPluginCall) {
-        guard let overlay = call.options["overlay"] as? Bool else { return }
+        // Like Android, a missing `overlay` means true.
+        let overlay = call.getBool("overlay") ?? true
         DispatchQueue.main.async { [weak self] in
             self?.statusBar?.setOverlaysWebView(overlay)
-            guard
-                let info = self?.statusBar?.getInfo(),
-                let dict = self?.toDict(info),
-                let event = self?.statusBarOverlayChanged
-            else { return }
-            self?.notifyListeners(event, data: dict)
+            guard let self, let info = self.statusBar?.getInfo() else {
+                return
+            }
+            self.notifyListeners(self.statusBarOverlayChanged, data: StatusBarPlugin.toDict(info))
         }
         call.resolve()
     }
 
-    private func toDict(_ info: StatusBarInfo) -> [String: Any] {
+    /// The JavaScript form of `info`. Every field of `StatusBarInfo` is optional, so a missing one falls back to the
+    /// value the plugin starts with instead of crashing.
+    static func toDict(_ info: StatusBarInfo) -> [String: Any] {
         return [
-            "visible": info.visible!,
-            "style": info.style!,
-            "color": info.color!,
-            "overlays": info.overlays!,
-            "height": info.height!
+            "visible": info.visible ?? true,
+            "style": info.style ?? "DEFAULT",
+            "color": info.color ?? "",
+            "overlays": info.overlays ?? true,
+            "height": info.height ?? 0
         ]
     }
 }
