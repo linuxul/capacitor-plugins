@@ -52,6 +52,9 @@ public class AppPlugin : Plugin() {
             }
         onBackPressedCallback = callback
 
+        // The activity owns the callback and can outlive this bridge: a fragment host, or a host that creates another
+        // bridge in the same activity, destroys the bridge first. handleOnDestroy removes the callback, which would
+        // otherwise keep the plugin and the bridge reachable and go on handling back presses for a destroyed bridge.
         activity.onBackPressedDispatcher.addCallback(activity, callback)
     }
 
@@ -155,6 +158,7 @@ public class AppPlugin : Plugin() {
 
     override fun handleOnDestroy() {
         unsetAppListeners()
+        onBackPressedCallback?.remove()
     }
 
     private fun unsetAppListeners() {
