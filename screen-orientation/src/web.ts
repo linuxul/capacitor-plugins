@@ -14,7 +14,10 @@ interface ScreenOrientationWithLock extends ScreenOrientation {
   lock(orientation: OrientationLockType): Promise<void>;
 }
 
-export class ScreenOrientationWeb extends WebPlugin implements ScreenOrientationPlugin {
+export class ScreenOrientationWeb
+  extends WebPlugin<{ screenOrientationChange: ScreenOrientationResult }>
+  implements ScreenOrientationPlugin
+{
   constructor() {
     super();
     if (typeof screen !== 'undefined' && typeof screen.orientation !== 'undefined') {
