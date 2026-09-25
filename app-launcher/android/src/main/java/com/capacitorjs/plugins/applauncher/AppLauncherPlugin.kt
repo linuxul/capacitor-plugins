@@ -7,6 +7,7 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Logger
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.util.InternalUtils
@@ -15,11 +16,7 @@ import com.getcapacitor.util.InternalUtils
 public class AppLauncherPlugin : Plugin() {
     @PluginMethod
     public fun canOpenUrl(call: PluginCall) {
-        val url = call.getString("url")
-        if (url == null) {
-            call.reject("Must supply a url")
-            return
-        }
+        val url = call.getString("url") ?: throw PluginException("Must supply a url")
 
         val pm = activity.applicationContext.packageManager
 
@@ -41,11 +38,7 @@ public class AppLauncherPlugin : Plugin() {
 
     @PluginMethod
     public fun openUrl(call: PluginCall) {
-        val url = call.getString("url")
-        if (url == null) {
-            call.reject("Must provide a url to open")
-            return
-        }
+        val url = call.getString("url") ?: throw PluginException("Must provide a url to open")
         val launchIntent = Intent(Intent.ACTION_VIEW)
         launchIntent.data = Uri.parse(url)
         val completed =
