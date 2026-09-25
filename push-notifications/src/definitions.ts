@@ -437,39 +437,3 @@ export interface PermissionStatus {
    */
   receive: PermissionState;
 }
-
-/**
- * @deprecated Use 'Channel`.
- * @since 1.0.0
- */
-export type NotificationChannel = Channel;
-
-/**
- * @deprecated Use `ListChannelsResult`.
- * @since 1.0.0
- */
-export type NotificationChannelList = ListChannelsResult;
-
-/**
- * @deprecated Use `PushNotificationSchema`.
- * @since 1.0.0
- */
-export type PushNotification = PushNotificationSchema;
-
-/**
- * @deprecated Use `ActionPerformed`.
- * @since 1.0.0
- */
-export type PushNotificationActionPerformed = ActionPerformed;
-
-/**
- * @deprecated Use `DeliveredNotifications`.
- * @since 1.0.0
- */
-export type PushNotificationDeliveredList = DeliveredNotifications;
-
-/**
- * @deprecated Use `Token`.
- * @since 1.0.0
- */
-export type PushNotificationToken = Token;

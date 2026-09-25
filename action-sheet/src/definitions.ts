@@ -118,24 +118,6 @@ export interface ActionSheetPlugin {
 }
 
 /**
- * @deprecated Use `ShowActionsOptions`.
- * @since 1.0.0
- */
-export type ActionSheetOptions = ShowActionsOptions;
-
-/**
- * @deprecated Use `ShowActionsResult`.
- * @since 1.0.0
- */
-export type ActionSheetResult = ShowActionsResult;
-
-/**
- * @deprecated Use `ActionSheetButton`.
- * @since 1.0.0
- */
-export type ActionSheetOption = ActionSheetButton;
-
-/**
  * @deprecated Use `ActionSheetButtonStyle`.
  * @since 1.0.0
  */

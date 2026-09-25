@@ -69,15 +69,3 @@ export interface ReadResult {
    */
   type: string;
 }
-
-/**
- * @deprecated Use `WriteOptions`.
- * @since 1.0.0
- */
-export type ClipboardWrite = WriteOptions;
-
-/**
- * @deprecated Use `ReadResult`.
- * @since 1.0.0
- */
-export type ClipboardReadResult = ReadResult;

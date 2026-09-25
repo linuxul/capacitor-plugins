@@ -62,15 +62,3 @@ export type ConnectionStatusChangeListener = (status: ConnectionStatus) => void;
  * @since 1.0.0
  */
 export type ConnectionType = 'wifi' | 'cellular' | 'none' | 'unknown';
-
-/**
- * @deprecated Use `ConnectionStatus`.
- * @since 1.0.0
- */
-export type NetworkStatus = ConnectionStatus;
-
-/**
- * @deprecated Use `ConnectionStatusChangeListener`.
- * @since 1.0.0
- */
-export type NetworkStatusChangeCallback = ConnectionStatusChangeListener;

@@ -348,15 +348,3 @@ export enum CameraResultType {
   Base64 = 'base64',
   DataUrl = 'dataUrl',
 }
-
-/**
- * @deprecated Use `Photo`.
- * @since 1.0.0
- */
-export type CameraPhoto = Photo;
-
-/**
- * @deprecated Use `ImageOptions`.
- * @since 1.0.0
- */
-export type CameraOptions = ImageOptions;

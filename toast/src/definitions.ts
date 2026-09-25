@@ -33,9 +33,3 @@ export interface ShowOptions {
    */
   position?: 'top' | 'center' | 'bottom';
 }
-
-/**
- * @deprecated Use `ToastShowOptions`.
- * @since 1.0.0
- */
-export type ToastShowOptions = ShowOptions;

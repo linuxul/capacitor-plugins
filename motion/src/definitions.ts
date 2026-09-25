@@ -102,27 +102,3 @@ export interface AccelListenerEvent {
    */
   interval: number;
 }
-
-/**
- * @deprecated Use `AccelListener`.
- * @since 1.0.0
- */
-export type MotionWatchAccelCallback = AccelListener;
-
-/**
- * @deprecated Use `AccelListenerEvent`.
- * @since 1.0.0
- */
-export type MotionEventResult = AccelListenerEvent;
-
-/**
- * @deprecated Use `OrientationListener`.
- * @since 1.0.0
- */
-export type MotionWatchOrientationCallback = OrientationListener;
-
-/**
- * @deprecated Use `OrientationListenerEvent`.
- * @since 1.0.0
- */
-export type MotionOrientationEventResult = OrientationListenerEvent;

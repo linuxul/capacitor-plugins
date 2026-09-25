@@ -98,9 +98,3 @@ export interface OpenOptions {
    */
   height?: number;
 }
-
-/**
- * @deprecated Use `OpenOptions`.
- * @since 1.0.0
- */
-export type BrowserOpenOptions = OpenOptions;

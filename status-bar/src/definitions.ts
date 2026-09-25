@@ -244,36 +244,6 @@ export interface StatusBarPlugin {
 }
 
 /**
- * @deprecated Use `StyleOptions`.
- * @since 1.0.0
- */
-export type StatusBarStyleOptions = StyleOptions;
-
-/**
- * @deprecated Use `BackgroundColorOptions`.
- * @since 1.0.0
- */
-export type StatusBarBackgroundColorOptions = BackgroundColorOptions;
-
-/**
- * @deprecated Use `SetOverlaysWebViewOptions`.
- * @since 1.0.0
- */
-export type StatusBarOverlaysWebviewOptions = SetOverlaysWebViewOptions;
-
-/**
- * @deprecated Use `StatusBarInfo`.
- * @since 1.0.0
- */
-export type StatusBarInfoResult = StatusBarInfo;
-
-/**
- * @deprecated Use `AnimationOptions`.
- * @since 1.0.0
- */
-export type StatusBarAnimationOptions = AnimationOptions;
-
-/**
  * @deprecated Use `Animation`.
  * @since 1.0.0
  */

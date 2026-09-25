@@ -77,15 +77,3 @@ export interface ScreenReaderPlugin {
    */
   removeAllListeners(): Promise<void>;
 }
-
-/**
- * @deprecated Use `SpeakOptions`.
- * @since 1.0.0
- */
-export type AccessibilitySpeakOptions = SpeakOptions;
-
-/**
- * @deprecated Use `StateChangeListener`.
- * @since 1.0.0
- */
-export type ScreenReaderStateChangeCallback = StateChangeListener;
