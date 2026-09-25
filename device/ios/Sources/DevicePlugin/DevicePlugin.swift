@@ -7,24 +7,29 @@ public class DevicePlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "DevicePlugin"
     public let jsName = "Device"
     public let pluginMethods: [CAPPluginMethod] = [
-        .promise("getId", DevicePlugin.getId),
-        .promise("getInfo", DevicePlugin.getInfo),
-        .promise("getBatteryInfo", DevicePlugin.getBatteryInfo),
+        .async("getId", DevicePlugin.getId),
+        .async("getInfo", DevicePlugin.getInfo),
+        .async("getBatteryInfo", DevicePlugin.getBatteryInfo),
         .promise("getLanguageCode", DevicePlugin.getLanguageCode),
         .promise("getLanguageTag", DevicePlugin.getLanguageTag)
     ]
     private let implementation = Device()
 
-    func getId(_ call: CAPPluginCall) {
-        if let uuid = UIDevice.current.identifierForVendor {
-            call.resolve([
-                "identifier": uuid.uuidString
-            ])
-        } else {
-            call.reject("Id not available")
+    // UIDevice is UIKit state: getId, getInfo and getBatteryInfo run on the main actor, not the bridge queue. They
+    // only read, so it does not matter that async methods do not keep the order of the calls.
+
+    @MainActor
+    func getId(_ call: CAPPluginCall) async throws -> JSObject {
+        guard let uuid = UIDevice.current.identifierForVendor else {
+            throw CAPPluginError("Id not available")
         }
+        return [
+            "identifier": uuid.uuidString
+        ]
     }
-    func getInfo(_ call: CAPPluginCall) {
+
+    @MainActor
+    func getInfo(_ call: CAPPluginCall) async -> JSObject {
         var isSimulator = false
         var modelName = ""
         #if targetEnvironment(simulator)
@@ -37,8 +42,9 @@ public class DevicePlugin: CAPPlugin, CAPBridgedPlugin {
         let memUsed = implementation.getMemoryUsage()
         let systemVersionNum = implementation.getSystemVersionInt() ?? 0
 
-        call.resolve([
-            "memUsed": memUsed,
+        return [
+            // UInt64 is not a JSValue; NSNumber serializes to the same JSON number.
+            "memUsed": NSNumber(value: memUsed),
             "name": UIDevice.current.name,
             "model": modelName,
             "operatingSystem": "ios",
@@ -48,18 +54,20 @@ public class DevicePlugin: CAPPlugin, CAPBridgedPlugin {
             "manufacturer": "Apple",
             "isVirtual": isSimulator,
             "webViewVersion": UIDevice.current.systemVersion
-        ])
+        ]
     }
 
-    func getBatteryInfo(_ call: CAPPluginCall) {
+    @MainActor
+    func getBatteryInfo(_ call: CAPPluginCall) async -> JSObject {
         UIDevice.current.isBatteryMonitoringEnabled = true
+        defer {
+            UIDevice.current.isBatteryMonitoringEnabled = false
+        }
 
-        call.resolve([
+        return [
             "batteryLevel": UIDevice.current.batteryLevel,
             "isCharging": UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
-        ])
-
-        UIDevice.current.isBatteryMonitoringEnabled = false
+        ]
     }
 
     func getLanguageCode(_ call: CAPPluginCall) {
