@@ -28,7 +28,7 @@ public class DialogPlugin: CAPPlugin, CAPBridgedPlugin {
             alert.addAction(UIAlertAction(title: buttonTitle, style: UIAlertAction.Style.default, handler: { (_) in
                 call.resolve()
             }))
-            self?.bridge?.viewController?.present(alert, animated: true, completion: nil)
+            DialogPlugin.present(alert, over: self?.bridge?.viewController, for: call)
         }
     }
 
@@ -53,11 +53,11 @@ public class DialogPlugin: CAPPlugin, CAPBridgedPlugin {
                     "value": true
                 ])
             }))
-            self?.bridge?.viewController?.present(alert, animated: true, completion: nil)
+            DialogPlugin.present(alert, over: self?.bridge?.viewController, for: call)
         }
     }
 
-    @objc public func prompt (_ call: CAPPluginCall) {
+    @objc public func prompt(_ call: CAPPluginCall) {
         let title = call.options["title"] as? String
         guard let message = call.options["message"] as? String else {
             call.reject("Please provide a message for the dialog")
@@ -82,15 +82,38 @@ public class DialogPlugin: CAPPlugin, CAPBridgedPlugin {
                     "cancelled": true
                 ])
             }))
-            alert.addAction(UIAlertAction(title: okButtonTitle, style: UIAlertAction.Style.default, handler: { (_) in
-                let textField = alert.textFields?[0]
+            alert.addAction(UIAlertAction(title: okButtonTitle, style: UIAlertAction.Style.default, handler: { [weak alert] (_) in
+                let textField = alert?.textFields?.first
                 call.resolve([
                     "value": textField?.text ?? "",
                     "cancelled": false
                 ])
             }))
 
-            self?.bridge?.viewController?.present(alert, animated: true, completion: nil)
+            DialogPlugin.present(alert, over: self?.bridge?.viewController, for: call)
         }
+    }
+}
+
+extension DialogPlugin {
+    /// Presents `alert` from the topmost view controller presented over `root`, or rejects `call` when there is
+    /// nothing to present from, so the call never waits for a dialog that cannot appear. Call on the main thread.
+    static func present(_ alert: UIAlertController, over root: UIViewController?, for call: CAPPluginCall) {
+        guard let presenter = topmostPresenter(from: root) else {
+            call.reject("Unable to display the dialog: there is no view controller to present it from")
+            return
+        }
+        presenter.present(alert, animated: true, completion: nil)
+    }
+
+    /// The view controller to present from: the last controller in the chain presented over `root`, skipping one that
+    /// is being dismissed. Presenting from `root` itself while it already presents a controller fails silently, which
+    /// left the call pending when the app showed a modal over the web view. Call on the main thread.
+    static func topmostPresenter(from root: UIViewController?) -> UIViewController? {
+        var presenter = root
+        while let presented = presenter?.presentedViewController, !presented.isBeingDismissed {
+            presenter = presented
+        }
+        return presenter
     }
 }
