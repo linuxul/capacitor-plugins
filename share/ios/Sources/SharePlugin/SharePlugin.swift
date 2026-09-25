@@ -7,17 +7,17 @@ public class SharePlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "SharePlugin"
     public let jsName = "Share"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "canShare", returnType: .promise),
-        CAPPluginMethod(name: "share", returnType: .promise)
+        .promise("canShare", SharePlugin.canShare),
+        .promise("share", SharePlugin.share)
     ]
 
-    @objc func canShare(_ call: CAPPluginCall) {
+    func canShare(_ call: CAPPluginCall) {
         call.resolve([
             "value": true
         ])
     }
 
-    @objc func share(_ call: CAPPluginCall) {
+    func share(_ call: CAPPluginCall) {
         let items = SharePlugin.activityItems(from: call)
         if items.count == 0 {
             call.reject("Must provide at least url, text or files")
