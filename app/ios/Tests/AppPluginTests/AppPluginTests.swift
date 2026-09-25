@@ -67,6 +67,51 @@ final class AppPluginTests: XCTestCase {
         wait(for: [settled], timeout: timeout)
     }
 
+    func testAndroidOnlyMethodsThrowUnimplemented() {
+        let plugin = AppPlugin()
+        let methods: [(String, (CAPPluginCall) throws -> Void)] = [
+            ("exitApp", plugin.exitApp),
+            ("minimizeApp", plugin.minimizeApp),
+            ("toggleBackButtonHandler", plugin.toggleBackButtonHandler)
+        ]
+        for (name, method) in methods {
+            XCTAssertThrowsError(try method(unansweredCall(name)), name) { error in
+                // The bridge rejects the call with this error, as call.unimplemented() did.
+                let pluginError = error as? CAPPluginError
+                XCTAssertEqual(pluginError?.message, "not implemented", name)
+                XCTAssertEqual(pluginError?.code, "UNIMPLEMENTED", name)
+                XCTAssertNotNil(pluginError?.data, name)
+                XCTAssertEqual(pluginError?.data?.isEmpty, true, name)
+            }
+        }
+    }
+
+    func testGetInfoResolvesWithTheBundleInfo() throws {
+        let settled = expectation(description: "getInfo settles")
+        var result: PluginCallResultData?
+        let call = CAPPluginCall(callbackId: "test", methodName: "getInfo", options: [:], success: { callResult, _ in
+            result = callResult.data
+            settled.fulfill()
+        }, error: { _ in
+            XCTFail("getInfo must not reject")
+        })
+
+        try AppPlugin().getInfo(call)
+
+        wait(for: [settled], timeout: timeout)
+        for key in ["name", "id", "build", "version"] {
+            XCTAssertNotNil(result?[key] as? String, key)
+        }
+    }
+
+    private func unansweredCall(_ method: String) -> CAPPluginCall {
+        return CAPPluginCall(callbackId: "test", methodName: method, options: [:], success: { _, _ in
+            XCTFail("\(method) answers by throwing")
+        }, error: { _ in
+            XCTFail("\(method) answers by throwing")
+        })
+    }
+
     func testGetAppLanguageResolvesWithAString() {
         let settled = expectation(description: "getAppLanguage settles")
         var value: Any?

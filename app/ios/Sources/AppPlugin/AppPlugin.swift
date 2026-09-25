@@ -90,22 +90,20 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
         ]
     }
 
-    func exitApp(_ call: CAPPluginCall) {
-        call.unimplemented()
+    func exitApp(_ call: CAPPluginCall) throws {
+        throw CAPPluginError.unimplemented()
     }
 
-    func getInfo(_ call: CAPPluginCall) {
-        if let info = Bundle.main.infoDictionary {
-            call.resolve([
-                "name": info["CFBundleDisplayName"] as? String ?? "",
-                "id": info["CFBundleIdentifier"] as? String ?? "",
-                "build": info["CFBundleVersion"] as? String ?? "",
-                "version": info["CFBundleShortVersionString"] as? String ?? ""
-            ])
-        } else {
-            call.reject("Unable to get App Info")
+    func getInfo(_ call: CAPPluginCall) throws {
+        guard let info = Bundle.main.infoDictionary else {
+            throw CAPPluginError("Unable to get App Info")
         }
-
+        call.resolve([
+            "name": info["CFBundleDisplayName"] as? String ?? "",
+            "id": info["CFBundleIdentifier"] as? String ?? "",
+            "build": info["CFBundleVersion"] as? String ?? "",
+            "version": info["CFBundleShortVersionString"] as? String ?? ""
+        ])
     }
 
     func getLaunchUrl(_ call: CAPPluginCall) {
@@ -133,8 +131,8 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
         ]
     }
 
-    func minimizeApp(_ call: CAPPluginCall) {
-        call.unimplemented()
+    func minimizeApp(_ call: CAPPluginCall) throws {
+        throw CAPPluginError.unimplemented()
     }
 
     func getAppLanguage(_ call: CAPPluginCall) {
@@ -143,7 +141,7 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
-    func toggleBackButtonHandler(_ call: CAPPluginCall) {
-        call.unimplemented()
+    func toggleBackButtonHandler(_ call: CAPPluginCall) throws {
+        throw CAPPluginError.unimplemented()
     }
 }
