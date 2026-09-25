@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 
@@ -24,11 +25,7 @@ public class ScreenOrientationPlugin : Plugin() {
 
     @PluginMethod
     public fun lock(call: PluginCall) {
-        val orientationType = call.getString("orientation")
-        if (orientationType == null) {
-            call.reject("Input option 'orientation' must be provided.")
-            return
-        }
+        val orientationType = call.getString("orientation") ?: throw PluginException("Input option 'orientation' must be provided.")
         implementation.lock(orientationType)
         call.resolve()
     }
