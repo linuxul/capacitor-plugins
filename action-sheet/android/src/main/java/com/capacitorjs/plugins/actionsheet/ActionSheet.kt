@@ -26,6 +26,10 @@ public class ActionSheet : BottomSheetDialogFragment() {
     public var onSelectedListener: OnSelectListener? = null
     public var onCancelListener: OnCancelListener? = null
 
+    // Told when the sheet closes for any reason: after onSelectedListener when an option was picked, after
+    // onCancelListener when it was cancelled, and alone when it closed some other way, for example with its activity.
+    internal var onDismissListener: (() -> Unit)? = null
+
     private val bottomSheetCallback =
         object : BottomSheetBehavior.BottomSheetCallback() {
             override fun onStateChanged(bottomSheet: View, newState: Int) {
@@ -40,6 +44,11 @@ public class ActionSheet : BottomSheetDialogFragment() {
     override fun onCancel(dialog: DialogInterface) {
         super.onCancel(dialog)
         onCancelListener?.onCancel()
+    }
+
+    override fun onDismiss(dialog: DialogInterface) {
+        super.onDismiss(dialog)
+        onDismissListener?.invoke()
     }
 
     @SuppressLint("RestrictedApi")
