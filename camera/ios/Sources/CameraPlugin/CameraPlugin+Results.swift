@@ -5,69 +5,71 @@ import Photos
 
 // Turning picked images into call results.
 extension CameraPlugin {
+    /// Ends the active call with `processedImage`, or with the error that kept it from being returned.
     func returnImage(_ processedImage: ProcessedImage, isSaved: Bool) {
+        finishActiveCall(Result { try imageResult(processedImage, isSaved: isSaved) })
+    }
+
+    /// The getPhoto result for `processedImage`, in the result type the settings ask for.
+    func imageResult(_ processedImage: ProcessedImage, isSaved: Bool) throws -> JSObject {
         guard let jpeg = processedImage.generateJPEG(with: settings.jpegQuality) else {
-            rejectActiveCall("Unable to convert image to jpeg")
-            return
+            throw CAPPluginError("Unable to convert image to jpeg")
         }
 
         switch settings.resultType {
         case .uri:
             guard let fileURL = try? saveTemporaryImage(jpeg),
                   let webURL = bridge?.portablePath(fromLocalURL: fileURL) else {
-                rejectActiveCall("Unable to get portable path to file")
-                return
+                throw CAPPluginError("Unable to get portable path to file")
             }
-            resolveActiveCall([
+            return [
                 "path": fileURL.absoluteString,
-                "exif": processedImage.exifData,
+                "exif": processedImage.exifObject,
                 "webPath": webURL.absoluteString,
                 "format": "jpeg",
                 "saved": isSaved
-            ])
+            ]
         case .base64:
-            resolveActiveCall([
+            return [
                 "base64String": jpeg.base64EncodedString(),
-                "exif": processedImage.exifData,
+                "exif": processedImage.exifObject,
                 "format": "jpeg",
                 "saved": isSaved
-            ])
+            ]
         case .dataURL:
-            resolveActiveCall([
+            return [
                 "dataUrl": "data:image/jpeg;base64," + jpeg.base64EncodedString(),
-                "exif": processedImage.exifData,
+                "exif": processedImage.exifObject,
                 "format": "jpeg",
                 "saved": isSaved
-            ])
+            ]
         }
     }
 
-    /// Saves `processedImages` as temporary JPEG files and resolves `call` with them, or rejects it when one fails.
-    /// `call` is the active pickImages call, or a getLimitedLibraryPhotos call that never occupies the slot.
-    func returnImages(_ processedImages: [ProcessedImage], jpegQuality: CGFloat, to call: CAPPluginCall?) {
-        var photos: [PluginCallResultData] = []
+    /// The `{ photos }` result for `processedImages`, saved as temporary JPEG files, for the active pickImages call or
+    /// a getLimitedLibraryPhotos call. Throws when an image cannot be encoded or saved.
+    func photosResult(_ processedImages: [ProcessedImage], jpegQuality: CGFloat) throws -> JSObject {
+        var photos: [JSObject] = []
         for processedImage in processedImages {
             guard let jpeg = processedImage.generateJPEG(with: jpegQuality) else {
-                call?.reject("Unable to convert image to jpeg")
-                return
+                throw CAPPluginError("Unable to convert image to jpeg")
             }
 
             guard let fileURL = try? saveTemporaryImage(jpeg),
                   let webURL = bridge?.portablePath(fromLocalURL: fileURL) else {
-                call?.reject("Unable to get portable path to file")
-                return
+                throw CAPPluginError("Unable to get portable path to file")
             }
 
             photos.append([
                 "path": fileURL.absoluteString,
-                "exif": processedImage.exifData,
+                "exif": processedImage.exifObject,
                 "webPath": webURL.absoluteString,
                 "format": "jpeg"
             ])
         }
-        call?.resolve([
+        return [
             "photos": photos
-        ])
+        ]
     }
 
     func returnProcessedImage(_ processedImage: ProcessedImage) {

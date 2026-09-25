@@ -4,8 +4,9 @@ import UIKit
 import Photos
 import PhotosUI
 
-// Every picker path ends in resolveActiveCall or rejectActiveCall, which free the slot for the next getPhoto or
-// pickImages call. A path that did not would leave every later call rejected as "in progress".
+// Every picker path ends in finishActiveCall, resolveActiveCall or rejectActiveCall, which answer the getPhoto or
+// pickImages method awaiting the call and free the slot for the next call. A path that did not would leave the method
+// waiting and every later call rejected as "in progress".
 
 // public delegate methods
 extension CameraPlugin: UIImagePickerControllerDelegate, UINavigationControllerDelegate, UIPopoverPresentationControllerDelegate {
@@ -52,7 +53,7 @@ extension CameraPlugin: PHPickerViewControllerDelegate {
             }
 
             if self.multiple {
-                self.returnImages(processedImageArray, jpegQuality: self.settings.jpegQuality, to: self.activeCall.take())
+                self.finishActiveCall(Result { try self.photosResult(processedImageArray, jpegQuality: self.settings.jpegQuality) })
             } else if var processedImage = processedImageArray.first {
                 processedImage.flags = .gallery
                 self.returnProcessedImage(processedImage)
@@ -106,17 +107,23 @@ extension CameraPlugin {
             rejectActiveCall(CameraPlugin.noPresenterMessage)
             return
         }
-        // Build the action sheet
+        // Build the action sheet. Its actions hold the choice: a prompt that goes away without one (on iPad, a tap
+        // outside the popover dismisses it without calling an action) cancels the call when it is released, instead of
+        // holding the slot and rejecting every later call as in progress.
+        let choice = PromptChoice(plugin: self)
         let alert = UIAlertController(title: settings.userPromptText.title, message: nil, preferredStyle: UIAlertController.Style.actionSheet)
         alert.addAction(UIAlertAction(title: settings.userPromptText.photoAction, style: .default, handler: { [weak self] (_: UIAlertAction) in
+            choice.choose()
             self?.showPhotos()
         }))
 
         alert.addAction(UIAlertAction(title: settings.userPromptText.cameraAction, style: .default, handler: { [weak self] (_: UIAlertAction) in
+            choice.choose()
             self?.showCamera()
         }))
 
         alert.addAction(UIAlertAction(title: settings.userPromptText.cancelAction, style: .cancel, handler: { [weak self] (_: UIAlertAction) in
+            choice.choose()
             self?.rejectActiveCall("User cancelled photos app")
         }))
         CameraPlugin.centerPopover(alert, on: presenter)
@@ -219,5 +226,26 @@ extension CameraPlugin {
         if presenter.presentedViewController !== controller {
             rejectActiveCall(CameraPlugin.noPresenterMessage)
         }
+    }
+}
+
+/// Whether the user chose an option of the source prompt. Released with the prompt: unchosen, it cancels the call the
+/// prompt was shown for. Used on the main thread.
+final class PromptChoice {
+    private weak var plugin: CameraPlugin?
+    private var chosen = false
+
+    init(plugin: CameraPlugin) {
+        self.plugin = plugin
+    }
+
+    deinit {
+        if !chosen {
+            plugin?.rejectActiveCall("User cancelled photos app")
+        }
+    }
+
+    func choose() {
+        chosen = true
     }
 }

@@ -9,12 +9,12 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "CAPCameraPlugin"
     public let jsName = "Camera"
     public let pluginMethods: [CAPPluginMethod] = [
-        .promise("getPhoto", CameraPlugin.getPhoto),
-        .promise("pickImages", CameraPlugin.pickImages),
+        .async("getPhoto", CameraPlugin.getPhoto),
+        .async("pickImages", CameraPlugin.pickImages),
         .promise("checkPermissions", CameraPlugin.checkPermissions),
-        .promise("requestPermissions", CameraPlugin.requestPermissions),
-        .promise("pickLimitedLibraryPhotos", CameraPlugin.pickLimitedLibraryPhotos),
-        .promise("getLimitedLibraryPhotos", CameraPlugin.getLimitedLibraryPhotos)
+        .async("requestPermissions", CameraPlugin.requestCameraPermissions),
+        .async("pickLimitedLibraryPhotos", CameraPlugin.pickLimitedLibraryPhotos),
+        .async("getLimitedLibraryPhotos", CameraPlugin.getLimitedLibraryPhotos)
     ]
     static let callInProgressMessage = "Another getPhoto or pickImages call is in progress"
     static let noPresenterMessage = "Unable to display the picker: there is no view controller to present it from"
@@ -30,8 +30,14 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
     private let imageCounterLock = NSLock()
     private var imageCounter = 0
 
+    /// Reading the authorization statuses is thread-safe: the method stays synchronous.
     override public func checkPermissions(_ call: CAPPluginCall) {
-        var result: [String: Any] = [:]
+        call.resolve(CameraPlugin.permissionStates())
+    }
+
+    /// The permission state of every permission type, as checkPermissions and requestPermissions resolve with it.
+    static func permissionStates() -> JSObject {
+        var result: JSObject = [:]
         for permission in CameraPermissionType.allCases {
             let state: String
             switch permission {
@@ -42,10 +48,12 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             result[permission.rawValue] = state
         }
-        call.resolve(result)
+        return result
     }
 
-    override public func requestPermissions(_ call: CAPPluginCall) {
+    /// Requests the permissions the call names, or all of them, one after the other, and returns the states. It is
+    /// registered as requestPermissions: an async method cannot override the synchronous CAPPlugin method.
+    func requestCameraPermissions(_ call: CAPPluginCall) async -> JSObject {
         // get the list of desired types, if passed
         let typeList = call.getArray("permissions", String.self)?.compactMap({ (type) -> CameraPermissionType? in
             return CameraPermissionType(rawValue: type)
@@ -53,113 +61,96 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
         // otherwise check everything
         let permissions: [CameraPermissionType] = (typeList.count > 0) ? typeList : CameraPermissionType.allCases
         // request the permissions
-        let group = DispatchGroup()
         for permission in permissions {
             switch permission {
             case .camera:
-                group.enter()
-                AVCaptureDevice.requestAccess(for: .video) { _ in
-                    group.leave()
-                }
+                _ = await AVCaptureDevice.requestAccess(for: .video)
             case .photos:
+                _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            }
+        }
+        return CameraPlugin.permissionStates()
+    }
+
+    /// Lets the user change the limited library selection, then returns its photos. The picker is UIKit: the method
+    /// runs on the main actor.
+    @MainActor
+    func pickLimitedLibraryPhotos(_ call: CAPPluginCall) async throws -> JSObject {
+        guard await PHPhotoLibrary.requestAuthorization(for: .readWrite) == .limited else {
+            return [
+                "photos": [JSObject]()
+            ]
+        }
+        guard let presenter = CameraPlugin.topmostPresenter(from: bridge?.viewController) else {
+            throw CAPPluginError(CameraPlugin.noPresenterMessage)
+        }
+        _ = await PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: presenter)
+        return try await limitedLibraryPhotos()
+    }
+
+    /// This call takes no options and has nothing to do with a getPhoto or pickImages call in progress: it uses the
+    /// default settings and answers itself, not the active call.
+    func getLimitedLibraryPhotos(_ call: CAPPluginCall) async throws -> JSObject {
+        guard await PHPhotoLibrary.requestAuthorization(for: .readWrite) == .limited else {
+            return [
+                "photos": [JSObject]()
+            ]
+        }
+        return try await limitedLibraryPhotos()
+    }
+
+    /// Every photo of the limited library, processed with the default settings and saved as temporary files.
+    private func limitedLibraryPhotos() async throws -> JSObject {
+        return try await withCheckedContinuation { (continuation: CheckedContinuation<Result<JSObject, Error>, Never>) in
+            loadLimitedLibraryPhotos { continuation.resume(returning: $0) }
+        }.get()
+    }
+
+    /// Loads and encodes every photo of the limited library on a utility queue, not in the Swift concurrency pool, and
+    /// calls `completion` once with the `{ photos }` result or the error that kept a photo from being saved.
+    private func loadLimitedLibraryPhotos(_ completion: @escaping (Result<JSObject, Error>) -> Void) {
+        let settings = CameraSettings()
+        DispatchQueue.global(qos: .utility).async {
+            let assets = PHAsset.fetchAssets(with: .image, options: nil)
+            let imagesLock = NSLock()
+            var processedImages: [ProcessedImage] = []
+
+            let imageManager = PHImageManager.default()
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+
+            let group = DispatchGroup()
+            assets.enumerateObjects { asset, _, _ in
+                let fullSize = CGSize(width: asset.pixelWidth, height: asset.pixelHeight)
+
                 group.enter()
-                PHPhotoLibrary.requestAuthorization(for: .readWrite) { (_) in
+                imageManager.requestImage(for: asset, targetSize: fullSize, contentMode: .default, options: options) { image, _ in
+                    if let image {
+                        let processedImage = self.processedImage(from: image, with: asset.imageData, settings: settings)
+                        imagesLock.withLock {
+                            processedImages.append(processedImage)
+                        }
+                    }
                     group.leave()
                 }
             }
-        }
-        group.notify(queue: DispatchQueue.main) { [weak self] in
-            self?.checkPermissions(call)
-        }
-    }
 
-    func pickLimitedLibraryPhotos(_ call: CAPPluginCall) {
-        PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] (granted) in
-            guard granted == .limited else {
-                call.resolve([
-                    "photos": []
-                ])
-                return
-            }
-            // Photos calls back on a background queue; the limited library picker is UIKit.
-            DispatchQueue.main.async {
-                guard let self, let presenter = CameraPlugin.topmostPresenter(from: self.bridge?.viewController) else {
-                    call.reject(CameraPlugin.noPresenterMessage)
-                    return
-                }
-                PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: presenter) { [weak self] _ in
-                    guard let self else {
-                        call.reject("The camera plugin is no longer available")
-                        return
-                    }
-                    self.getLimitedLibraryPhotos(call)
-                }
+            group.notify(queue: .global(qos: .utility)) {
+                let images = imagesLock.withLock { processedImages }
+                completion(Result { try self.photosResult(images, jpegQuality: settings.jpegQuality) })
             }
         }
     }
 
-    func getLimitedLibraryPhotos(_ call: CAPPluginCall) {
-        PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] (granted) in
-            guard granted == .limited else {
-                call.resolve([
-                    "photos": []
-                ])
-                return
-            }
-            guard let self else {
-                call.reject("The camera plugin is no longer available")
-                return
-            }
-            // This call takes no options and has nothing to do with a getPhoto or pickImages call in progress, so it
-            // uses the default settings and settles `call` directly, not the active call.
-            let settings = CameraSettings()
-            DispatchQueue.global(qos: .utility).async {
-                let assets = PHAsset.fetchAssets(with: .image, options: nil)
-                let imagesLock = NSLock()
-                var processedImages: [ProcessedImage] = []
-
-                let imageManager = PHImageManager.default()
-                let options = PHImageRequestOptions()
-                options.deliveryMode = .highQualityFormat
-
-                let group = DispatchGroup()
-                assets.enumerateObjects { asset, _, _ in
-                    let fullSize = CGSize(width: asset.pixelWidth, height: asset.pixelHeight)
-
-                    group.enter()
-                    imageManager.requestImage(for: asset, targetSize: fullSize, contentMode: .default, options: options) { image, _ in
-                        if let image {
-                            let processedImage = self.processedImage(from: image, with: asset.imageData, settings: settings)
-                            imagesLock.withLock {
-                                processedImages.append(processedImage)
-                            }
-                        }
-                        group.leave()
-                    }
-                }
-
-                group.notify(queue: .global(qos: .utility)) {
-                    self.returnImages(imagesLock.withLock { processedImages }, jpegQuality: settings.jpegQuality, to: call)
-                }
-            }
-        }
-    }
-
-    func getPhoto(_ call: CAPPluginCall) {
+    /// Shows the source prompt, the camera or the photo picker, and returns the photo once a picker path ends the call.
+    @MainActor
+    func getPhoto(_ call: CAPPluginCall) async throws -> JSObject {
         // Make sure they have all the necessary info.plist settings
         if let missingUsageDescription = checkUsageDescriptions() {
             CAPLog.print("⚡️ ", self.pluginId, "-", missingUsageDescription)
-            call.reject(missingUsageDescription)
-            return
+            throw CAPPluginError(missingUsageDescription)
         }
-        guard activeCall.begin(call) else {
-            call.reject(CameraPlugin.callInProgressMessage)
-            return
-        }
-        self.multiple = false
-        self.settings = cameraSettings(from: call)
-
-        DispatchQueue.main.async {
+        return try await whileActive(call, multiple: false) {
             switch self.settings.source {
             case .prompt:
                 self.showPrompt()
@@ -171,26 +162,45 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    func pickImages(_ call: CAPPluginCall) {
-        guard activeCall.begin(call) else {
-            call.reject(CameraPlugin.callInProgressMessage)
-            return
-        }
-        self.multiple = true
-        self.settings = cameraSettings(from: call)
-        DispatchQueue.main.async {
+    /// Shows the photo picker and returns `{ photos }` once a picker path ends the call.
+    @MainActor
+    func pickImages(_ call: CAPPluginCall) async throws -> JSObject {
+        return try await whileActive(call, multiple: true) {
             self.showPhotos()
         }
     }
 
+    /// Makes `call` the active call, runs `show` to put its picker on screen, and returns what the picker path that
+    /// ends the call answers. A call made while another is in progress throws, and leaves the active call alone.
+    ///
+    /// The answer is resumed exactly once: `ActiveCall.finish(with:)` hands it to the first path that ends the call
+    /// only, and the slot answers a call it still holds when it goes away with the plugin.
+    @MainActor
+    func whileActive(_ call: CAPPluginCall, multiple: Bool, show: () -> Void) async throws -> JSObject {
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<JSObject, Error>) in
+            guard activeCall.begin(call, answer: { continuation.resume(with: $0) }) else {
+                continuation.resume(throwing: CAPPluginError(CameraPlugin.callInProgressMessage))
+                return
+            }
+            self.multiple = multiple
+            self.settings = cameraSettings(from: call)
+            show()
+        }
+    }
+
+    /// Ends the active call with `result` and frees the slot for the next one.
+    func finishActiveCall(_ result: Result<JSObject, Error>) {
+        activeCall.finish(with: result)
+    }
+
     /// Resolves the active call and frees the slot for the next one.
-    func resolveActiveCall(_ data: PluginCallResultData) {
-        activeCall.take()?.resolve(data)
+    func resolveActiveCall(_ data: JSObject) {
+        finishActiveCall(.success(data))
     }
 
     /// Rejects the active call and frees the slot for the next one.
     func rejectActiveCall(_ message: String) {
-        activeCall.take()?.reject(message)
+        finishActiveCall(.failure(CAPPluginError(message)))
     }
 
     /// The next file name for a temporary photo. Pickers and getLimitedLibraryPhotos save from different queues.

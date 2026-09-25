@@ -57,19 +57,29 @@ public struct CameraResult {
 
 // MARK: - Internal
 
-/// The one getPhoto or pickImages call a picker works for. The bridge queue starts it, and the main queue and the
-/// queues Photos calls back on settle it, so access is locked.
+/// The one getPhoto or pickImages call a picker works for, and how to answer it. The main actor starts it, and the
+/// main queue and the queues Photos calls back on end it, so access is locked.
 internal final class ActiveCall {
+    typealias Answer = (Result<JSObject, Error>) -> Void
+
     private let lock = NSLock()
     private var call: CAPPluginCall?
+    private var answer: Answer?
 
-    /// Makes `call` the active call. Returns false, leaving the active call in place, when another is in progress.
-    func begin(_ call: CAPPluginCall) -> Bool {
+    deinit {
+        // The plugin went away while a picker worked for a call: answer it instead of leaving its method waiting.
+        answer?(.failure(CAPPluginError("The camera plugin is no longer available")))
+    }
+
+    /// Makes `call` the active call, which `answer` answers when it ends. Returns false, leaving the active call in
+    /// place, when another is in progress.
+    func begin(_ call: CAPPluginCall, answer: @escaping Answer) -> Bool {
         return lock.withLock {
             guard self.call == nil else {
                 return false
             }
             self.call = call
+            self.answer = answer
             return true
         }
     }
@@ -79,12 +89,19 @@ internal final class ActiveCall {
         return lock.withLock { call }
     }
 
-    /// Removes and returns the active call, so that only one path settles it and the next call can begin.
-    func take() -> CAPPluginCall? {
-        return lock.withLock {
-            defer { call = nil }
-            return call
+    /// Ends the active call with `result` and frees the slot for the next one, so that only the first path that ends
+    /// the call answers it. Returns false when no call was active.
+    @discardableResult
+    func finish(with result: Result<JSObject, Error>) -> Bool {
+        let pending: Answer? = lock.withLock {
+            defer {
+                call = nil
+                answer = nil
+            }
+            return answer
         }
+        pending?(result)
+        return pending != nil
     }
 }
 
@@ -134,6 +151,12 @@ internal struct ProcessedImage {
         exifData?["Orientation"] = metadata["Orientation"]
         exifData?["GPS"] = metadata["{GPS}"]
         return exifData ?? [:]
+    }
+
+    /// `exifData` as a JSObject for a call result. The metadata are property list values, which convert unchanged; a
+    /// value JSON cannot hold (binary data) is left out.
+    var exifObject: JSObject {
+        return JSTypes.coerceDictionaryToJSObject(exifData) ?? [:]
     }
 
     mutating func overwriteMetadataOrientation(to orientation: Int) {
