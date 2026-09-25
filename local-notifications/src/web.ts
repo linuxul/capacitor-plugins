@@ -43,7 +43,7 @@ export class LocalNotificationsWeb
     for (const toRemove of delivered.notifications) {
       const found = this.deliveredNotifications.find((n) => n.tag === String(toRemove.id));
       found?.close();
-      this.deliveredNotifications = this.deliveredNotifications.filter(() => !found);
+      this.deliveredNotifications = this.deliveredNotifications.filter((n) => n !== found);
     }
   }
   async removeAllDeliveredNotifications(): Promise<void> {
@@ -198,7 +198,7 @@ export class LocalNotificationsWeb
     localNotification.addEventListener(
       'close',
       () => {
-        this.deliveredNotifications = this.deliveredNotifications.filter(() => !this);
+        this.deliveredNotifications = this.deliveredNotifications.filter((n) => n !== localNotification);
       },
       false,
     );
