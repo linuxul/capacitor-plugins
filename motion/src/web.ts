@@ -1,8 +1,11 @@
 import { WebPlugin } from '@capacitor/core';
 
-import type { MotionPlugin } from './definitions';
+import type { AccelListenerEvent, MotionPlugin, OrientationListenerEvent } from './definitions';
 
-export class MotionWeb extends WebPlugin implements MotionPlugin {
+export class MotionWeb
+  extends WebPlugin<{ accel: AccelListenerEvent; orientation: OrientationListenerEvent }>
+  implements MotionPlugin
+{
   constructor() {
     super();
     this.registerWindowListener('devicemotion', 'accel');
