@@ -245,17 +245,16 @@ public class CameraPlugin : Plugin() {
      * Completes the plugin call after a camera permission request
      *
      * @see getPhoto
-     * @param call the plugin call
+     * @param call the plugin call, or null when the bridge saved none for this result
      */
     @PermissionCallback
-    private fun cameraPermissionsCallback(call: PluginCall) {
-        if (!activeCall.isActive(call)) {
-            // The bridge hands a plugin's permission results to its waiting calls in the order they asked, whichever
-            // prompt a result is for. When requestPermissions asks while the active call waits for the camera prompt,
-            // the two calls can swap results: this is then the requestPermissions call, and checkPermissions, its
-            // callback, answers and ends the active call. Answer this one as checkPermissions would instead of taking
-            // a picture for it.
-            checkPermissions(call)
+    private fun cameraPermissionsCallback(call: PluginCall?) {
+        // The bridge hands a result of this callback only to a call that asked through it, and only the active call
+        // does (checkCameraPermissions); requestPermissions waits on checkPermissions. A call that is no longer active
+        // has settled, or the plugin was destroyed while the prompt was up. The call is null when the bridge was
+        // created again (the activity was recreated) while the prompt was up. Drop the result in either case, as the
+        // photo pickers do, instead of opening the camera for a call nothing waits on.
+        if (call == null || !activeCall.isActive(call)) {
             return
         }
         withActiveCall(call) {
@@ -775,17 +774,6 @@ public class CameraPlugin : Plugin() {
         data.put("base64String", encoded)
         data.put("exif", exif.toJson())
         resolveActiveCall(call, data)
-    }
-
-    /**
-     * Also the permission callback of requestPermissions, which the bridge can hand the active call instead of the
-     * requestPermissions call (see [cameraPermissionsCallback]). Ending the call it answers keeps that call from
-     * blocking the next one; any other call is not the active call, and ending it changes nothing.
-     */
-    @PluginMethod
-    override fun checkPermissions(pluginCall: PluginCall) {
-        activeCall.end(pluginCall)
-        super.checkPermissions(pluginCall)
     }
 
     @PluginMethod
