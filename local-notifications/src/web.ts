@@ -2,6 +2,7 @@ import { WebPlugin } from '@capacitor/core';
 import type { PermissionState } from '@capacitor/core';
 
 import type {
+  ActionPerformed,
   DeliveredNotifications,
   EnabledResult,
   ListChannelsResult,
@@ -14,7 +15,13 @@ import type {
   SettingsPermissionStatus,
 } from './definitions';
 
-export class LocalNotificationsWeb extends WebPlugin implements LocalNotificationsPlugin {
+export class LocalNotificationsWeb
+  extends WebPlugin<{
+    localNotificationReceived: LocalNotificationSchema;
+    localNotificationActionPerformed: ActionPerformed;
+  }>
+  implements LocalNotificationsPlugin
+{
   protected pending: LocalNotificationSchema[] = [];
   protected deliveredNotifications: Notification[] = [];
 
