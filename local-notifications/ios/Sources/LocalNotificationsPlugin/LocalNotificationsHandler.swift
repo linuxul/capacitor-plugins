@@ -1,3 +1,4 @@
+import Foundation
 import Capacitor
 import UserNotifications
 
@@ -5,9 +6,25 @@ public class LocalNotificationsHandler: NSObject, NotificationHandlerProtocol {
 
     public weak var plugin: CAPPlugin?
 
-    // Local list of notification id -> JSObject for storing options
-    // between notification requets
-    var notificationRequestLookup = [String: JSObject]()
+    // Local list of notification id -> JSObject for storing options between notification requests. It is written on
+    // the bridge queue when a notification is scheduled and read on the main queue when one is presented or opened,
+    // so every access goes through the lock.
+    private let requestLookupLock = NSLock()
+    private var requestLookup = [String: JSObject]()
+
+    /// Remembers the options `notification` was scheduled with, for when it is presented or opened.
+    func storeRequest(_ notification: JSObject, forIdentifier identifier: String) {
+        requestLookupLock.withLock {
+            requestLookup[identifier] = notification
+        }
+    }
+
+    /// The options the notification with `identifier` was scheduled with, if this app session scheduled it.
+    func storedRequest(forIdentifier identifier: String) -> JSObject? {
+        return requestLookupLock.withLock {
+            requestLookup[identifier]
+        }
+    }
 
     public func requestPermissions(with completion: ((Bool, Error?) -> Void)? = nil) {
         let center = UNUserNotificationCenter.current()
@@ -28,7 +45,7 @@ public class LocalNotificationsHandler: NSObject, NotificationHandlerProtocol {
 
         self.plugin?.notifyListeners("localNotificationReceived", data: notificationData)
 
-        if let options = notificationRequestLookup[notification.request.identifier] {
+        if let options = storedRequest(forIdentifier: notification.request.identifier) {
             let silent = options["silent"] as? Bool ?? false
             if silent {
                 return UNNotificationPresentationOptions.init(rawValue: 0)
@@ -95,7 +112,7 @@ public class LocalNotificationsHandler: NSObject, NotificationHandlerProtocol {
      * Turn a UNNotificationRequest into a JSObject to return back to the client.
      */
     func makeNotificationRequestJSObject(_ request: UNNotificationRequest) -> JSObject {
-        let notificationRequest = notificationRequestLookup[request.identifier] ?? [:]
+        let notificationRequest = storedRequest(forIdentifier: request.identifier) ?? [:]
         var notification = makePendingNotificationRequestJSObject(request)
         notification["sound"] = notificationRequest["sound"]  ?? ""
         notification["actionTypeId"] = request.content.categoryIdentifier

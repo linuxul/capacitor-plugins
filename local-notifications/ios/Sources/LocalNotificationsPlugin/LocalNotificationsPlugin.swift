@@ -9,6 +9,7 @@ enum LocalNotificationError: LocalizedError {
     case contentNoBody
     case triggerConstructionFailed
     case triggerRepeatIntervalTooShort
+    case triggerDateNotInFuture
     case attachmentNoId
     case attachmentNoUrl
     case attachmentFileNotFound(path: String)
@@ -24,7 +25,6 @@ enum LocalNotificationError: LocalizedError {
     }
 }
 
-// swiftlint:disable type_body_length
 @objc(LocalNotificationsPlugin)
 public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "LocalNotificationsPlugin"
@@ -62,17 +62,15 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Must provide notifications array as notifications option")
             return
         }
-        var ids = [String]()
-
+        // Build every request before adding any, so a notification the plugin rejects schedules none of the batch.
+        var requests = [(request: UNNotificationRequest, notification: JSObject)]()
         for notification in notifications {
             guard let identifier = notification["id"] as? Int else {
                 call.reject("Notification missing identifier")
                 return
             }
 
-            // let extra = notification["options"] as? JSObject ?? [:]
-
-            var content: UNNotificationContent
+            let content: UNNotificationContent
             do {
                 content = try makeNotificationContent(notification)
             } catch {
@@ -82,40 +80,54 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
             }
 
             var trigger: UNNotificationTrigger?
-
             do {
                 if let schedule = notification["schedule"] as? JSObject {
-                    try trigger = handleScheduledNotification(call, schedule)
+                    trigger = try handleScheduledNotification(schedule)
                 }
+            } catch LocalNotificationError.triggerDateNotInFuture {
+                call.reject("Scheduled time must be *after* current time")
+                return
             } catch {
                 call.reject("Unable to create notification, trigger failed", nil, error)
                 return
             }
 
-            // Schedule the request.
             let request = UNNotificationRequest(identifier: "\(identifier)", content: content, trigger: trigger)
-
-            self.notificationDelegationHandler.notificationRequestLookup[request.identifier] = notification
-
-            let center = UNUserNotificationCenter.current()
-            center.add(request) { (error: Error?) in
-                if let theError = error {
-                    CAPLog.print(theError.localizedDescription)
-                    call.reject(theError.localizedDescription)
-                }
-            }
-
-            ids.append(request.identifier)
+            requests.append((request, notification))
         }
+        add(requests, for: call)
+    }
 
-        let ret = ids.map({ (id) -> JSObject in
-            return [
-                "id": Int(id) ?? -1
-            ]
-        })
-        call.resolve([
-            "notifications": ret
-        ])
+    /// Adds the requests and settles `call` once every addition has completed: rejected with the first error, or
+    /// resolved with the identifiers. The call used to resolve before the additions completed and then reject again
+    /// when one failed.
+    private func add(_ requests: [(request: UNNotificationRequest, notification: JSObject)], for call: CAPPluginCall) {
+        let center = UNUserNotificationCenter.current()
+        let group = DispatchGroup()
+        let errorLock = NSLock()
+        var firstError: Error?
+        for (request, notification) in requests {
+            notificationDelegationHandler.storeRequest(notification, forIdentifier: request.identifier)
+            group.enter()
+            center.add(request) { (error: Error?) in
+                if let error {
+                    CAPLog.print(error.localizedDescription)
+                    errorLock.withLock {
+                        firstError = firstError ?? error
+                    }
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .global(qos: .userInitiated)) {
+            if let error = errorLock.withLock({ firstError }) {
+                call.reject(error.localizedDescription)
+                return
+            }
+            call.resolve([
+                "notifications": requests.map { ["id": Int($0.request.identifier) ?? -1] }
+            ])
+        }
     }
 
     /**
@@ -123,8 +135,8 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
      */
     @objc override public func requestPermissions(_ call: CAPPluginCall) {
         self.notificationDelegationHandler.requestPermissions { granted, error in
-            guard error == nil else {
-                call.reject(error!.localizedDescription)
+            if let error {
+                call.reject(error.localizedDescription)
                 return
             }
             call.resolve(["display": granted ? "granted" : "denied"])
@@ -203,6 +215,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
      */
     @objc func registerActionTypes(_ call: CAPPluginCall) {
         guard let types = call.getArray("types", JSObject.self) else {
+            call.reject("Must provide types array as types option")
             return
         }
 
@@ -223,374 +236,6 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
                 "value": enabled && authorized
             ])
         }
-    }
-
-    /**
-     * Build the content for a notification.
-     */
-    func makeNotificationContent(_ notification: JSObject) throws -> UNNotificationContent {
-        guard let title = notification["title"] as? String else {
-            throw LocalNotificationError.contentNoTitle
-        }
-        guard let body = notification["body"] as? String else {
-            throw LocalNotificationError.contentNoBody
-        }
-
-        let extra = notification["extra"] as? JSObject ?? [:]
-        let schedule = notification["schedule"] as? JSObject ?? [:]
-        let content = UNMutableNotificationContent()
-        content.title = NSString.localizedUserNotificationString(forKey: title, arguments: nil)
-        content.body = NSString.localizedUserNotificationString(forKey: body,
-                                                                arguments: nil)
-
-        content.userInfo = [
-            "cap_extra": extra,
-            "cap_schedule": schedule
-        ]
-
-        if let actionTypeId = notification["actionTypeId"] as? String {
-            content.categoryIdentifier = actionTypeId
-        }
-
-        if let threadIdentifier = notification["threadIdentifier"] as? String {
-            content.threadIdentifier = threadIdentifier
-        }
-
-        if let relevanceScore = notification["relevanceScore"] as? Double {
-            content.relevanceScore = relevanceScore
-        }
-
-        if let interruptionLevelString = notification["interruptionLevel"] as? String {
-            switch interruptionLevelString {
-            case "active":
-                content.interruptionLevel = .active
-            case "critical":
-                content.interruptionLevel = .critical
-            case "passive":
-                content.interruptionLevel = .passive
-            case "timeSensitive":
-                content.interruptionLevel = .timeSensitive
-            default:
-                break
-            }
-        }
-
-        if let sound = notification["sound"] as? String {
-            content.sound = UNNotificationSound(named: UNNotificationSoundName(sound))
-        }
-
-        if let attachments = notification["attachments"] as? [JSObject] {
-            content.attachments = try makeAttachments(attachments)
-        }
-
-        return content
-    }
-
-    /**
-     * Build a notification trigger, such as triggering each N seconds, or
-     * on a certain date "shape" (such as every first of the month)
-     */
-    func handleScheduledNotification(_ call: CAPPluginCall, _ schedule: JSObject) throws -> UNNotificationTrigger? {
-        var at: Date?
-        if let scheduleDate = schedule["at"] as? NSDate {
-            at = scheduleDate as Date
-        }
-        let every = schedule["every"] as? String
-        let count = schedule["count"] as? Int ?? 1
-        let on = schedule["on"] as? JSObject
-        let repeats = schedule["repeats"] as? Bool ?? false
-
-        // If there's a specific date for this notificiation
-        if let at = at {
-            let dateInfo = Calendar.current.dateComponents(in: TimeZone.current, from: at)
-
-            if dateInfo.date! < Date() {
-                call.reject("Scheduled time must be *after* current time")
-                return nil
-            }
-
-            let dateInterval = DateInterval(start: Date(), end: dateInfo.date!)
-
-            // Notifications that repeat have to be at least a minute between each other
-            if repeats && dateInterval.duration < 60 {
-                throw LocalNotificationError.triggerRepeatIntervalTooShort
-            }
-
-            return UNTimeIntervalNotificationTrigger(timeInterval: dateInterval.duration, repeats: repeats)
-        }
-
-        // If this notification should repeat every count of day/month/week/etc. or on a certain
-        // matching set of date components
-        if let on = on {
-            let dateComponents = getDateComponents(on)
-            return UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
-        }
-
-        if let every = every {
-            if let repeatDateInterval = getRepeatDateInterval(every, count) {
-                return UNTimeIntervalNotificationTrigger(timeInterval: repeatDateInterval.duration, repeats: true)
-            }
-        }
-
-        return nil
-    }
-
-    /**
-     * Given our schedule format, return a DateComponents object
-     * that only contains the components passed in.
-     */
-    func getDateComponents(_ at: JSObject) -> DateComponents {
-        // var dateInfo = Calendar.current.dateComponents(in: TimeZone.current, from: Date())
-        // dateInfo.calendar = Calendar.current
-        var dateInfo = DateComponents()
-
-        if let year = at["year"] as? Int {
-            dateInfo.year = year
-        }
-        if let month = at["month"] as? Int {
-            dateInfo.month = month
-        }
-        if let day = at["day"] as? Int {
-            dateInfo.day = day
-        }
-        if let hour = at["hour"] as? Int {
-            dateInfo.hour = hour
-        }
-        if let minute = at["minute"] as? Int {
-            dateInfo.minute = minute
-        }
-        if let second = at["second"] as? Int {
-            dateInfo.second = second
-        }
-        if let weekday = at["weekday"] as? Int {
-            dateInfo.weekday = weekday
-        }
-        return dateInfo
-    }
-
-    /**
-     * Compute the difference between the string representation of a date
-     * interval and today. For example, if every is "month", then we
-     * return the interval between today and a month from today.
-     */
-    func getRepeatDateInterval(_ every: String, _ count: Int) -> DateInterval? {
-        let cal = Calendar.current
-        let now = Date()
-        switch every {
-        case "year":
-            let newDate = cal.date(byAdding: .year, value: count, to: now)!
-            return DateInterval(start: now, end: newDate)
-        case "month":
-            let newDate = cal.date(byAdding: .month, value: count, to: now)!
-            return DateInterval(start: now, end: newDate)
-        case "two-weeks":
-            let newDate = cal.date(byAdding: .weekOfYear, value: 2 * count, to: now)!
-            return DateInterval(start: now, end: newDate)
-        case "week":
-            let newDate = cal.date(byAdding: .weekOfYear, value: count, to: now)!
-            return DateInterval(start: now, end: newDate)
-        case "day":
-            let newDate = cal.date(byAdding: .day, value: count, to: now)!
-            return DateInterval(start: now, end: newDate)
-        case "hour":
-            let newDate = cal.date(byAdding: .hour, value: count, to: now)!
-            return DateInterval(start: now, end: newDate)
-        case "minute":
-            let newDate = cal.date(byAdding: .minute, value: count, to: now)!
-            return DateInterval(start: now, end: newDate)
-        case "second":
-            let newDate = cal.date(byAdding: .second, value: count, to: now)!
-            return DateInterval(start: now, end: newDate)
-        default:
-            return nil
-        }
-    }
-
-    /**
-     * Make required UNNotificationCategory entries for action types
-     */
-    func makeActionTypes(_ actionTypes: [JSObject]) {
-        var createdCategories = [UNNotificationCategory]()
-
-        let generalCategory = UNNotificationCategory(identifier: "GENERAL",
-                                                     actions: [],
-                                                     intentIdentifiers: [],
-                                                     options: .customDismissAction)
-
-        createdCategories.append(generalCategory)
-        for type in actionTypes {
-            guard let id = type["id"] as? String else {
-                CAPLog.print("⚡️ ", self.pluginId, "-", "Action type must have an id field")
-                continue
-            }
-            let hiddenBodyPlaceholder = type["iosHiddenPreviewsBodyPlaceholder"] as? String ?? ""
-            let actions = type["actions"] as? [JSObject] ?? []
-
-            let newActions = makeActions(actions)
-
-            // Create the custom actions for the TIMER_EXPIRED category.
-            var newCategory: UNNotificationCategory?
-
-            newCategory = UNNotificationCategory(identifier: id,
-                                                 actions: newActions,
-                                                 intentIdentifiers: [],
-                                                 hiddenPreviewsBodyPlaceholder: hiddenBodyPlaceholder,
-                                                 options: makeCategoryOptions(type))
-
-            createdCategories.append(newCategory!)
-        }
-
-        let center = UNUserNotificationCenter.current()
-        center.setNotificationCategories(Set(createdCategories))
-    }
-
-    /**
-     * Build the required UNNotificationAction objects for each action type registered.
-     */
-    func makeActions(_ actions: [JSObject]) -> [UNNotificationAction] {
-        var createdActions = [UNNotificationAction]()
-
-        for action in actions {
-            guard let id = action["id"] as? String else {
-                CAPLog.print("⚡️ ", self.pluginId, "-", "Action must have an id field")
-                continue
-            }
-            let title = action["title"] as? String ?? ""
-            let input = action["input"] as? Bool ?? false
-
-            var newAction: UNNotificationAction
-            if input {
-                let inputButtonTitle = action["inputButtonTitle"] as? String
-                let inputPlaceholder = action["inputPlaceholder"] as? String ?? ""
-
-                if inputButtonTitle != nil {
-                    newAction = UNTextInputNotificationAction(identifier: id,
-                                                              title: title,
-                                                              options: makeActionOptions(action),
-                                                              textInputButtonTitle: inputButtonTitle!,
-                                                              textInputPlaceholder: inputPlaceholder)
-                } else {
-                    newAction = UNTextInputNotificationAction(identifier: id, title: title, options: makeActionOptions(action))
-                }
-            } else {
-                // Create the custom actions for the TIMER_EXPIRED category.
-                newAction = UNNotificationAction(identifier: id,
-                                                 title: title,
-                                                 options: makeActionOptions(action))
-            }
-            createdActions.append(newAction)
-        }
-
-        return createdActions
-    }
-
-    /**
-     * Make options for UNNotificationActions
-     */
-    func makeActionOptions(_ action: JSObject) -> UNNotificationActionOptions {
-        let foreground = action["foreground"] as? Bool ?? false
-        let destructive = action["destructive"] as? Bool ?? false
-        let requiresAuthentication = action["requiresAuthentication"] as? Bool ?? false
-
-        if foreground {
-            return .foreground
-        }
-        if destructive {
-            return .destructive
-        }
-        if requiresAuthentication {
-            return .authenticationRequired
-        }
-        return UNNotificationActionOptions(rawValue: 0)
-    }
-
-    /**
-     * Make options for UNNotificationCategoryActions
-     */
-    func makeCategoryOptions(_ type: JSObject) -> UNNotificationCategoryOptions {
-        let customDismiss = type["iosCustomDismissAction"] as? Bool ?? false
-        let carPlay = type["iosAllowInCarPlay"] as? Bool ?? false
-        let hiddenPreviewsShowTitle = type["iosHiddenPreviewsShowTitle"] as? Bool ?? false
-        let hiddenPreviewsShowSubtitle = type["iosHiddenPreviewsShowSubtitle"] as? Bool ?? false
-
-        if customDismiss {
-            return .customDismissAction
-        }
-        if carPlay {
-            return .allowInCarPlay
-        }
-
-        if hiddenPreviewsShowTitle {
-            return .hiddenPreviewsShowTitle
-        }
-        if hiddenPreviewsShowSubtitle {
-            return .hiddenPreviewsShowSubtitle
-        }
-
-        return UNNotificationCategoryOptions(rawValue: 0)
-    }
-
-    /**
-     * Build the UNNotificationAttachment object for each attachment supplied.
-     */
-    func makeAttachments(_ attachments: [JSObject]) throws -> [UNNotificationAttachment] {
-        var createdAttachments = [UNNotificationAttachment]()
-
-        for attachment in attachments {
-            guard let id = attachment["id"] as? String else {
-                throw LocalNotificationError.attachmentNoId
-            }
-            guard let url = attachment["url"] as? String else {
-                throw LocalNotificationError.attachmentNoUrl
-            }
-            guard let urlObject = makeAttachmentUrl(url) else {
-                throw LocalNotificationError.attachmentFileNotFound(path: url)
-            }
-
-            let options = attachment["options"] as? JSObject ?? [:]
-
-            do {
-                let newAttachment = try UNNotificationAttachment(identifier: id, url: urlObject, options: makeAttachmentOptions(options))
-                createdAttachments.append(newAttachment)
-            } catch {
-                throw LocalNotificationError.attachmentUnableToCreate(error.localizedDescription)
-            }
-        }
-
-        return createdAttachments
-    }
-
-    /**
-     * Get the internal URL for the attachment URL
-     */
-    func makeAttachmentUrl(_ path: String) -> URL? {
-        guard let webURL = URL(string: path) else {
-            return nil
-        }
-
-        return bridge?.localURL(fromWebURL: webURL)
-    }
-
-    /**
-     * Build the options for the attachment, if any. (For example: the clipping rectangle to use
-     * for image attachments)
-     */
-    func makeAttachmentOptions(_ options: JSObject) -> JSObject {
-        var opts: JSObject = [:]
-
-        if let iosUNNotificationAttachmentOptionsTypeHintKey = options["iosUNNotificationAttachmentOptionsTypeHintKey"] as? String {
-            opts[UNNotificationAttachmentOptionsTypeHintKey] = iosUNNotificationAttachmentOptionsTypeHintKey
-        }
-        if let iosUNNotificationAttachmentOptionsThumbnailHiddenKey = options["iosUNNotificationAttachmentOptionsThumbnailHiddenKey"] as? String {
-            opts[UNNotificationAttachmentOptionsThumbnailHiddenKey] = iosUNNotificationAttachmentOptionsThumbnailHiddenKey
-        }
-        if let iosUNNotificationAttachmentOptionsThumbnailClippingRectKey = options["iosUNNotificationAttachmentOptionsThumbnailClippingRectKey"] as? String {
-            opts[UNNotificationAttachmentOptionsThumbnailClippingRectKey] = iosUNNotificationAttachmentOptionsThumbnailClippingRectKey
-        }
-        if let iosUNNotificationAttachmentOptionsThumbnailTimeKey = options["iosUNNotificationAttachmentOptionsThumbnailTimeKey"] as? String {
-            opts[UNNotificationAttachmentOptionsThumbnailTimeKey] = iosUNNotificationAttachmentOptionsThumbnailTimeKey
-        }
-        return opts
     }
 
     /**
@@ -625,11 +270,14 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
      * Remove all notifications from Notification Center
      */
     @objc func removeAllDeliveredNotifications(_ call: CAPPluginCall) {
-        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
-        DispatchQueue.main.async(execute: {
-            UIApplication.shared.applicationIconBadgeNumber = 0
-        })
-        call.resolve()
+        let center = UNUserNotificationCenter.current()
+        center.removeAllDeliveredNotifications()
+        center.setBadgeCount(0) { error in
+            if let error {
+                CAPLog.print("⚡️ ", self.pluginId, "-", "Unable to reset the badge count: \(error.localizedDescription)")
+            }
+            call.resolve()
+        }
     }
 
     @objc func createChannel(_ call: CAPPluginCall) {
