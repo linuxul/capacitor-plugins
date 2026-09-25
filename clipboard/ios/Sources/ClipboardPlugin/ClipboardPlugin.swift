@@ -6,12 +6,12 @@ public class ClipboardPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ClipboardPlugin"
     public let jsName = "Clipboard"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "read", returnType: .promise),
-        CAPPluginMethod(name: "write", returnType: .promise)
+        .promise("read", ClipboardPlugin.read),
+        .promise("write", ClipboardPlugin.write)
     ]
     private let implementation = Clipboard()
 
-    @objc func read(_ call: CAPPluginCall) {
+    func read(_ call: CAPPluginCall) {
         let result = implementation.read()
 
         if !result.isEmpty {
@@ -21,7 +21,7 @@ public class ClipboardPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func write(_ call: CAPPluginCall) {
+    func write(_ call: CAPPluginCall) {
         var result: Result<Void, Error>
 
         if let string = call.options["string"] as? String {
