@@ -73,12 +73,13 @@ export interface URLOpenListenerEvent {
   url: string;
 
   /**
-   * The source application opening the app (iOS only)
+   * The bundle ID of the source application opening the app (iOS only).
+   * An empty string when iOS does not report it.
    * https://developer.apple.com/documentation/uikit/uiapplicationopenurloptionskey/1623128-sourceapplication
    *
    * @since 1.0.0
    */
-  iosSourceApplication?: any;
+  iosSourceApplication?: string;
   /**
    * Whether the app should open the passed document in-place
    * or must copy it first.

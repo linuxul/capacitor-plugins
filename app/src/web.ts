@@ -2,7 +2,7 @@ import { WebPlugin } from '@capacitor/core';
 
 import type { AppInfo, AppPlugin, AppLaunchUrl, AppState, AppLanguageCode } from './definitions';
 
-export class AppWeb extends WebPlugin implements AppPlugin {
+export class AppWeb extends WebPlugin<{ appStateChange: AppState; pause: null; resume: null }> implements AppPlugin {
   constructor() {
     super();
     document.addEventListener('visibilitychange', this.handleVisibilityChange, false);

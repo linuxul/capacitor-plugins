@@ -466,11 +466,11 @@ Remove all native listeners for this plugin
 
 #### URLOpenListenerEvent
 
-| Prop                       | Type                 | Description                                                                                                                                                                        | Since |
-| -------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| **`url`**                  | <code>string</code>  | The URL the app was opened with.                                                                                                                                                   | 1.0.0 |
-| **`iosSourceApplication`** | <code>any</code>     | The source application opening the app (iOS only) https://developer.apple.com/documentation/uikit/uiapplicationopenurloptionskey/1623128-sourceapplication                         | 1.0.0 |
-| **`iosOpenInPlace`**       | <code>boolean</code> | Whether the app should open the passed document in-place or must copy it first. https://developer.apple.com/documentation/uikit/uiapplicationopenurloptionskey/1623123-openinplace | 1.0.0 |
+| Prop                       | Type                 | Description                                                                                                                                                                                                               | Since |
+| -------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| **`url`**                  | <code>string</code>  | The URL the app was opened with.                                                                                                                                                                                          | 1.0.0 |
+| **`iosSourceApplication`** | <code>string</code>  | The bundle ID of the source application opening the app (iOS only). An empty string when iOS does not report it. https://developer.apple.com/documentation/uikit/uiapplicationopenurloptionskey/1623128-sourceapplication | 1.0.0 |
+| **`iosOpenInPlace`**       | <code>boolean</code> | Whether the app should open the passed document in-place or must copy it first. https://developer.apple.com/documentation/uikit/uiapplicationopenurloptionskey/1623123-openinplace                                        | 1.0.0 |
 
 
 #### RestoredListenerEvent
