@@ -163,11 +163,15 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("event capacitorDidRegisterForRemoteNotifications not called.  Visit https://capacitorjs.com/docs/apis/push-notifications for more information")
             return
         }
-        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
-        DispatchQueue.main.async(execute: {
-            UIApplication.shared.applicationIconBadgeNumber = 0
-        })
-        call.resolve()
+        let center = UNUserNotificationCenter.current()
+        center.removeAllDeliveredNotifications()
+        // applicationIconBadgeNumber is deprecated since iOS 17; the notification center sets the badge from any thread.
+        center.setBadgeCount(0) { error in
+            if let error {
+                CAPLog.print("⚡️ ", self.pluginId, "-", "Unable to reset the badge count: \(error.localizedDescription)")
+            }
+            call.resolve()
+        }
     }
 
     @objc func createChannel(_ call: CAPPluginCall) {
