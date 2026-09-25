@@ -11,12 +11,12 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "StatusBarPlugin"
     public let jsName = "StatusBar"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "setStyle", returnType: .promise),
-        CAPPluginMethod(name: "setBackgroundColor", returnType: .promise),
-        CAPPluginMethod(name: "show", returnType: .promise),
-        CAPPluginMethod(name: "hide", returnType: .promise),
-        CAPPluginMethod(name: "getInfo", returnType: .promise),
-        CAPPluginMethod(name: "setOverlaysWebView", returnType: .promise)
+        .promise("setStyle", StatusBarPlugin.setStyle),
+        .promise("setBackgroundColor", StatusBarPlugin.setBackgroundColor),
+        .promise("show", StatusBarPlugin.show),
+        .promise("hide", StatusBarPlugin.hide),
+        .async("getInfo", StatusBarPlugin.getInfo),
+        .promise("setOverlaysWebView", StatusBarPlugin.setOverlaysWebView)
     ]
     private var statusBar: StatusBar?
     private let statusBarVisibilityChanged = "statusBarVisibilityChanged"
@@ -52,7 +52,7 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func setStyle(_ call: CAPPluginCall) {
+    func setStyle(_ call: CAPPluginCall) {
         let options = call.options
         if let styleString = options["style"] as? String {
             let barStyle = style(fromString: styleString)
@@ -63,7 +63,7 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve([:])
     }
 
-    @objc func setBackgroundColor(_ call: CAPPluginCall) {
+    func setBackgroundColor(_ call: CAPPluginCall) {
         guard let hexString = call.options["color"] as? String else {
             call.reject("Color must be provided")
             return
@@ -78,7 +78,7 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
-    @objc func hide(_ call: CAPPluginCall) {
+    func hide(_ call: CAPPluginCall) {
         let animation = call.getString("animation", "FADE")
         DispatchQueue.main.async { [weak self] in
             self?.statusBar?.hide(animation: animation)
@@ -90,7 +90,7 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
-    @objc func show(_ call: CAPPluginCall) {
+    func show(_ call: CAPPluginCall) {
         let animation = call.getString("animation", "FADE")
         DispatchQueue.main.async { [weak self] in
             self?.statusBar?.show(animation: animation)
@@ -102,17 +102,17 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
-    @objc func getInfo(_ call: CAPPluginCall) {
-        DispatchQueue.main.async { [weak self] in
-            guard let info = self?.statusBar?.getInfo() else {
-                call.reject("Unable to get the status bar info: the status bar is not available")
-                return
-            }
-            call.resolve(StatusBarPlugin.toDict(info))
+    /// The status bar is UIKit state: the method runs on the main actor, not the bridge queue. Async methods do not
+    /// keep the order of the calls, which is fine for a read; the setters stay synchronous so that they do.
+    @MainActor
+    func getInfo(_ call: CAPPluginCall) async throws {
+        guard let info = statusBar?.getInfo() else {
+            throw CAPPluginError("Unable to get the status bar info: the status bar is not available")
         }
+        call.resolve(StatusBarPlugin.toDict(info))
     }
 
-    @objc func setOverlaysWebView(_ call: CAPPluginCall) {
+    func setOverlaysWebView(_ call: CAPPluginCall) {
         // Like Android, a missing `overlay` means true.
         let overlay = call.getBool("overlay") ?? true
         DispatchQueue.main.async { [weak self] in

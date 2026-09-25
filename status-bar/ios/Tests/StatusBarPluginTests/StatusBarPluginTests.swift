@@ -37,9 +37,23 @@ final class StatusBarPluginTests: XCTestCase {
         XCTAssertEqual(settle(StatusBarPlugin().setOverlaysWebView, "setOverlaysWebView", [:]), .resolved)
     }
 
-    func testGetInfoWithoutAStatusBarIsRejected() {
-        XCTAssertEqual(settle(StatusBarPlugin().getInfo, "getInfo", [:]),
-                       .rejected("Unable to get the status bar info: the status bar is not available"))
+    @MainActor
+    func testGetInfoWithoutAStatusBarIsRejected() async {
+        // getInfo is an async method: the bridge rejects the call with the error it throws.
+        let call = CAPPluginCall(callbackId: "test", methodName: "getInfo", options: [:], success: { _, _ in
+            XCTFail("getInfo must not resolve")
+        }, error: { _ in
+            XCTFail("getInfo answers by throwing")
+        })
+        do {
+            try await StatusBarPlugin().getInfo(call)
+            XCTFail("getInfo must throw")
+        } catch let error as CAPPluginError {
+            XCTAssertEqual(error.message, "Unable to get the status bar info: the status bar is not available")
+            XCTAssertNil(error.code)
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
     }
 
     func testInfoWithMissingFieldsFallsBackInsteadOfCrashing() {
