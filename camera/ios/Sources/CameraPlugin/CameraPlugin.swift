@@ -9,12 +9,12 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "CAPCameraPlugin"
     public let jsName = "Camera"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "getPhoto", returnType: .promise),
-        CAPPluginMethod(name: "pickImages", returnType: .promise),
-        CAPPluginMethod(name: "checkPermissions", returnType: .promise),
-        CAPPluginMethod(name: "requestPermissions", returnType: .promise),
-        CAPPluginMethod(name: "pickLimitedLibraryPhotos", returnType: .promise),
-        CAPPluginMethod(name: "getLimitedLibraryPhotos", returnType: .promise)
+        .promise("getPhoto", CameraPlugin.getPhoto),
+        .promise("pickImages", CameraPlugin.pickImages),
+        .promise("checkPermissions", CameraPlugin.checkPermissions),
+        .promise("requestPermissions", CameraPlugin.requestPermissions),
+        .promise("pickLimitedLibraryPhotos", CameraPlugin.pickLimitedLibraryPhotos),
+        .promise("getLimitedLibraryPhotos", CameraPlugin.getLimitedLibraryPhotos)
     ]
     static let callInProgressMessage = "Another getPhoto or pickImages call is in progress"
     static let noPresenterMessage = "Unable to display the picker: there is no view controller to present it from"
@@ -30,7 +30,7 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
     private let imageCounterLock = NSLock()
     private var imageCounter = 0
 
-    @objc override public func checkPermissions(_ call: CAPPluginCall) {
+    override public func checkPermissions(_ call: CAPPluginCall) {
         var result: [String: Any] = [:]
         for permission in CameraPermissionType.allCases {
             let state: String
@@ -45,7 +45,7 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(result)
     }
 
-    @objc override public func requestPermissions(_ call: CAPPluginCall) {
+    override public func requestPermissions(_ call: CAPPluginCall) {
         // get the list of desired types, if passed
         let typeList = call.getArray("permissions", String.self)?.compactMap({ (type) -> CameraPermissionType? in
             return CameraPermissionType(rawValue: type)
@@ -73,7 +73,7 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func pickLimitedLibraryPhotos(_ call: CAPPluginCall) {
+    func pickLimitedLibraryPhotos(_ call: CAPPluginCall) {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] (granted) in
             guard granted == .limited else {
                 call.resolve([
@@ -98,7 +98,7 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func getLimitedLibraryPhotos(_ call: CAPPluginCall) {
+    func getLimitedLibraryPhotos(_ call: CAPPluginCall) {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] (granted) in
             guard granted == .limited else {
                 call.resolve([
@@ -145,7 +145,7 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func getPhoto(_ call: CAPPluginCall) {
+    func getPhoto(_ call: CAPPluginCall) {
         // Make sure they have all the necessary info.plist settings
         if let missingUsageDescription = checkUsageDescriptions() {
             CAPLog.print("⚡️ ", self.pluginId, "-", missingUsageDescription)
@@ -171,7 +171,7 @@ public class CameraPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func pickImages(_ call: CAPPluginCall) {
+    func pickImages(_ call: CAPPluginCall) {
         guard activeCall.begin(call) else {
             call.reject(CameraPlugin.callInProgressMessage)
             return
