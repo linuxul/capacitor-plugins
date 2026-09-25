@@ -1,5 +1,6 @@
 package com.capacitorjs.plugins.localnotifications
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlarmManager
 import android.app.Notification
@@ -9,12 +10,14 @@ import android.app.PendingIntent
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.AudioAttributes
 import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
+import androidx.core.content.ContextCompat
 import com.getcapacitor.CapConfig
 import com.getcapacitor.JSObject
 import com.getcapacitor.Logger
@@ -238,7 +241,11 @@ public class LocalNotificationManager(
                 localNotification.source?.let { LocalNotificationsPlugin.fireReceived(JSObject(it)) }
             } catch (e: JSONException) {
             }
-            notificationManager.notify(id, buildNotification)
+            // schedule() stops when areNotificationsEnabled() is false, as it is without POST_NOTIFICATIONS, and
+            // the system would drop the notification anyway. Checking here keeps this path safe on its own.
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                notificationManager.notify(id, buildNotification)
+            }
         }
     }
 
