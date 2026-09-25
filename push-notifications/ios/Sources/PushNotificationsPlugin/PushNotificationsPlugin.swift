@@ -21,15 +21,16 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         .promise("register", PushNotificationsPlugin.register),
         .promise("unregister", PushNotificationsPlugin.unregister),
-        .promise("checkPermissions", PushNotificationsPlugin.checkPermissions),
-        .promise("requestPermissions", PushNotificationsPlugin.requestPermissions),
-        .promise("getDeliveredNotifications", PushNotificationsPlugin.getDeliveredNotifications),
+        .async("checkPermissions", PushNotificationsPlugin.checkNotificationPermissions),
+        .async("requestPermissions", PushNotificationsPlugin.requestNotificationPermissions),
+        .async("getDeliveredNotifications", PushNotificationsPlugin.getDeliveredNotifications),
         .promise("removeAllDeliveredNotifications", PushNotificationsPlugin.removeAllDeliveredNotifications),
         .promise("removeDeliveredNotifications", PushNotificationsPlugin.removeDeliveredNotifications),
         .promise("createChannel", PushNotificationsPlugin.createChannel),
         .promise("listChannels", PushNotificationsPlugin.listChannels),
         .promise("deleteChannel", PushNotificationsPlugin.deleteChannel)
     ]
+    static let registrationNotCalledMessage = "event capacitorDidRegisterForRemoteNotifications not called.  Visit https://capacitorjs.com/docs/apis/push-notifications for more information"
     private let notificationDelegateHandler = PushNotificationsHandler()
     private var appDelegateRegistrationCalled: Bool = false
 
@@ -51,6 +52,10 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
+
+    // register, unregister and the removals stay synchronous: the bridge queue runs them in the order of the calls
+    // (register and unregister hand their UIKit call to the main queue in that order), which async methods would not
+    // keep. The permission methods and getDeliveredNotifications only ask the notification center, and await it.
 
     /**
      * Register for push notifications
@@ -75,79 +80,61 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Request notification permission
      */
-    override public func requestPermissions(_ call: CAPPluginCall) {
-        self.notificationDelegateHandler.requestPermissions { granted, error in
-            guard error == nil else {
-                if let err = error {
-                    call.reject(err.localizedDescription)
-                    return
-                }
-
-                call.reject("unknown error in permissions request")
-                return
-            }
-
-            var result: PushNotificationsPermissions = .denied
-
-            if granted {
-                result = .granted
-            }
-
-            call.resolve(["receive": result.rawValue])
+    func requestNotificationPermissions(_ call: CAPPluginCall) async throws -> JSObject {
+        let granted: Bool
+        do {
+            granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        } catch {
+            throw CAPPluginError(error.localizedDescription, underlyingError: error)
         }
+        let result: PushNotificationsPermissions = granted ? .granted : .denied
+        return ["receive": result.rawValue]
     }
 
     /**
      * Check notification permission
      */
-    override public func checkPermissions(_ call: CAPPluginCall) {
-        self.notificationDelegateHandler.checkPermissions { status in
-            var result: PushNotificationsPermissions = .prompt
+    func checkNotificationPermissions(_ call: CAPPluginCall) async -> JSObject {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        return ["receive": PushNotificationsPlugin.permission(for: settings.authorizationStatus).rawValue]
+    }
 
-            switch status {
-            case .notDetermined:
-                result = .prompt
-            case .denied:
-                result = .denied
-            case .ephemeral, .authorized, .provisional:
-                result = .granted
-            @unknown default:
-                result = .prompt
-            }
-
-            call.resolve(["receive": result.rawValue])
+    /// The permission state JavaScript receives for an authorization status.
+    static func permission(for status: UNAuthorizationStatus) -> PushNotificationsPermissions {
+        switch status {
+        case .notDetermined:
+            return .prompt
+        case .denied:
+            return .denied
+        case .ephemeral, .authorized, .provisional:
+            return .granted
+        @unknown default:
+            return .prompt
         }
     }
 
     /**
      * Get notifications in Notification Center
      */
-    func getDeliveredNotifications(_ call: CAPPluginCall) {
+    func getDeliveredNotifications(_ call: CAPPluginCall) async throws -> JSObject {
         if !appDelegateRegistrationCalled {
-            call.reject("event capacitorDidRegisterForRemoteNotifications not called.  Visit https://capacitorjs.com/docs/apis/push-notifications for more information")
-            return
+            throw CAPPluginError(PushNotificationsPlugin.registrationNotCalledMessage)
         }
-        UNUserNotificationCenter.current().getDeliveredNotifications(completionHandler: { (notifications) in
-            let ret = notifications.map({ (notification) -> [String: Any] in
-                return self.notificationDelegateHandler.makeNotificationRequestJSObject(notification.request)
-            })
-            call.resolve([
-                "notifications": ret
-            ])
-        })
+        let notifications = await UNUserNotificationCenter.current().deliveredNotifications()
+        return [
+            "notifications": notifications.map { notificationDelegateHandler.makeNotificationRequestJSObject($0.request) }
+        ]
     }
 
     /**
      * Remove specified notifications from Notification Center
      */
-    func removeDeliveredNotifications(_ call: CAPPluginCall) {
+    func removeDeliveredNotifications(_ call: CAPPluginCall) throws {
         if !appDelegateRegistrationCalled {
-            call.reject("event capacitorDidRegisterForRemoteNotifications not called.  Visit https://capacitorjs.com/docs/apis/push-notifications for more information")
-            return
+            throw CAPPluginError(PushNotificationsPlugin.registrationNotCalledMessage)
         }
         guard let notifications = call.getArray("notifications", JSObject.self) else {
-            call.reject("Must supply notifications to remove")
-            return
+            throw CAPPluginError("Must supply notifications to remove")
         }
 
         let ids = notifications.map { $0["id"] as? String ?? "" }
@@ -158,10 +145,9 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Remove all notifications from Notification Center
      */
-    func removeAllDeliveredNotifications(_ call: CAPPluginCall) {
+    func removeAllDeliveredNotifications(_ call: CAPPluginCall) throws {
         if !appDelegateRegistrationCalled {
-            call.reject("event capacitorDidRegisterForRemoteNotifications not called.  Visit https://capacitorjs.com/docs/apis/push-notifications for more information")
-            return
+            throw CAPPluginError(PushNotificationsPlugin.registrationNotCalledMessage)
         }
         let center = UNUserNotificationCenter.current()
         center.removeAllDeliveredNotifications()
@@ -174,16 +160,16 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    func createChannel(_ call: CAPPluginCall) {
-        call.unimplemented("Not available on iOS")
+    func createChannel(_ call: CAPPluginCall) throws {
+        throw CAPPluginError.unimplemented("Not available on iOS")
     }
 
-    func deleteChannel(_ call: CAPPluginCall) {
-        call.unimplemented("Not available on iOS")
+    func deleteChannel(_ call: CAPPluginCall) throws {
+        throw CAPPluginError.unimplemented("Not available on iOS")
     }
 
-    func listChannels(_ call: CAPPluginCall) {
-        call.unimplemented("Not available on iOS")
+    func listChannels(_ call: CAPPluginCall) throws {
+        throw CAPPluginError.unimplemented("Not available on iOS")
     }
 
     @objc public func didRegisterForRemoteNotificationsWithDeviceToken(notification: NSNotification) {
