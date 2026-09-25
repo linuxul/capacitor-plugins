@@ -27,11 +27,19 @@ public class ActionSheetPlugin : Plugin() {
             return
         }
 
-        try {
-            val actionOptions =
+        val actionOptions =
+            try {
                 options.toList<Any>().map { option ->
                     ActionSheetOption(JSObject.fromJSONObject(option as JSONObject).getString("title", ""))
                 }
+            } catch (ex: JSONException) {
+                Logger.error("JSON error processing an option for showActions", ex)
+                call.reject("JSON error processing an option for showActions", ex = ex)
+                return
+            }
+
+        // Plugin methods run on the bridge thread. The sheet is a fragment, so set it up and show it on the main thread.
+        bridge.executeOnMainThread {
             implementation.title = title
             implementation.options = actionOptions.toTypedArray()
             implementation.isCancelable = cancelable
@@ -43,10 +51,12 @@ public class ActionSheetPlugin : Plugin() {
                     resolve(call, index)
                     implementation.dismiss()
                 }
-            implementation.show(activity.supportFragmentManager, "capacitorModalsActionSheet")
-        } catch (ex: JSONException) {
-            Logger.error("JSON error processing an option for showActions", ex)
-            call.reject("JSON error processing an option for showActions", ex = ex)
+            try {
+                implementation.show(activity.supportFragmentManager, "capacitorModalsActionSheet")
+            } catch (ex: IllegalStateException) {
+                // The activity has already saved its state
+                call.reject("Unable to show the action sheet", ex = ex)
+            }
         }
     }
 
