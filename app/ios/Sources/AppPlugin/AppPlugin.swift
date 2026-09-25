@@ -80,11 +80,13 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
             return [:]
         }
 
-        let options = object["options"] as? [String: Any?] ?? [:]
+        // The delegate proxies post the options keyed by OpenURLOptionsKey: a cast to string keys fails, which left
+        // iosSourceApplication empty. openInPlace is a Boolean, as the TypeScript definition declares it.
+        let options = object["options"] as? [UIApplication.OpenURLOptionsKey: Any] ?? [:]
         return [
             "url": url.absoluteString ?? "",
-            "iosSourceApplication": options[UIApplication.OpenURLOptionsKey.sourceApplication.rawValue] as? String ?? "",
-            "iosOpenInPlace": options[UIApplication.OpenURLOptionsKey.openInPlace.rawValue] as? String ?? ""
+            "iosSourceApplication": options[.sourceApplication] as? String ?? "",
+            "iosOpenInPlace": options[.openInPlace] as? Bool ?? false
         ]
     }
 
