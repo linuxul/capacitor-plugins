@@ -14,6 +14,10 @@ import com.getcapacitor.util.WebColor
 public class BrowserPlugin : Plugin() {
     private lateinit var implementation: Browser
 
+    // The listener this plugin handed to BrowserControllerActivity
+    @Volatile
+    private var ownControllerListener: BrowserControllerListener? = null
+
     override fun load() {
         implementation = Browser(context)
         implementation.browserEventListener = Browser.BrowserEventListener(::onBrowserEvent)
@@ -52,13 +56,8 @@ public class BrowserPlugin : Plugin() {
 
         // open the browser and finish
 
-        val intent = Intent(context, BrowserControllerActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
-
         val finalToolbarColor = toolbarColor
-        browserControllerListener =
+        val listener =
             BrowserControllerListener { activity ->
                 try {
                     activity.open(implementation, url, finalToolbarColor)
@@ -69,6 +68,15 @@ public class BrowserPlugin : Plugin() {
                     call.reject("Unable to display URL")
                 }
             }
+        // Set before the activity starts, which reads it on the main thread as soon as it is created. Set after, the
+        // activity could find no listener and leave the call pending.
+        ownControllerListener = listener
+        browserControllerListener = listener
+
+        val intent = Intent(context, BrowserControllerActivity::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
     }
 
     @PluginMethod
@@ -92,6 +100,16 @@ public class BrowserPlugin : Plugin() {
         implementation.unbindService()
     }
 
+    override fun handleOnDestroy() {
+        // The listener holds this plugin, and through it the activity, until the browser closes. Only the listener is
+        // dropped: the browser runs in its own task, and a new plugin instance must still be able to close it.
+        val listener = ownControllerListener ?: return
+        ownControllerListener = null
+        if (controllerListener === listener) {
+            controllerListener = null
+        }
+    }
+
     private fun onBrowserEvent(event: Int) {
         when (event) {
             Browser.BROWSER_LOADED -> notifyListeners("browserPageLoaded", null)
@@ -100,15 +118,21 @@ public class BrowserPlugin : Plugin() {
     }
 
     public companion object {
+        // Both are used from the bridge thread and from the main thread
+        @Volatile
         private var browserControllerActivityInstance: BrowserControllerActivity? = null
+
+        @Volatile
+        private var controllerListener: BrowserControllerListener? = null
 
         /**
          * Called by [BrowserControllerActivity] once it is ready. Clearing it also forgets the activity.
          */
         @JvmStatic
-        public var browserControllerListener: BrowserControllerListener? = null
+        public var browserControllerListener: BrowserControllerListener?
+            get() = controllerListener
             set(listener) {
-                field = listener
+                controllerListener = listener
                 if (listener == null) {
                     browserControllerActivityInstance = null
                 }
