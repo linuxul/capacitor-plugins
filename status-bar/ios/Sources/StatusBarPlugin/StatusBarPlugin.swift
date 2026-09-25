@@ -52,6 +52,9 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    // The setters stay synchronous: the bridge queue runs them in the order of the calls and each hands its UIKit work
+    // to the main queue in that order, so the last call wins. Async methods would not keep that order.
+
     func setStyle(_ call: CAPPluginCall) {
         let options = call.options
         if let styleString = options["style"] as? String {
@@ -63,14 +66,12 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve([:])
     }
 
-    func setBackgroundColor(_ call: CAPPluginCall) {
+    func setBackgroundColor(_ call: CAPPluginCall) throws {
         guard let hexString = call.options["color"] as? String else {
-            call.reject("Color must be provided")
-            return
+            throw CAPPluginError("Color must be provided")
         }
         guard let color = UIColor.capacitor.color(fromHex: hexString) else {
-            call.reject("Invalid color provided. Must be a hex string (ex: #ff0000)")
-            return
+            throw CAPPluginError("Invalid color provided. Must be a hex string (ex: #ff0000)")
         }
         DispatchQueue.main.async { [weak self] in
             self?.statusBar?.setBackgroundColor(color)
@@ -105,11 +106,11 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
     /// The status bar is UIKit state: the method runs on the main actor, not the bridge queue. Async methods do not
     /// keep the order of the calls, which is fine for a read; the setters stay synchronous so that they do.
     @MainActor
-    func getInfo(_ call: CAPPluginCall) async throws {
+    func getInfo(_ call: CAPPluginCall) async throws -> JSObject {
         guard let info = statusBar?.getInfo() else {
             throw CAPPluginError("Unable to get the status bar info: the status bar is not available")
         }
-        call.resolve(StatusBarPlugin.toDict(info))
+        return StatusBarPlugin.toJSObject(info)
     }
 
     func setOverlaysWebView(_ call: CAPPluginCall) {
@@ -123,6 +124,11 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
             self.notifyListeners(self.statusBarOverlayChanged, data: StatusBarPlugin.toDict(info))
         }
         call.resolve()
+    }
+
+    /// `toDict(info)` as a JSObject, the result of `getInfo`. The bridge sends it as the same JSON as the events.
+    static func toJSObject(_ info: StatusBarInfo) -> JSObject {
+        return JSTypes.coerceDictionaryToJSObject(toDict(info)) ?? [:]
     }
 
     /// The JavaScript form of `info`. Every field of `StatusBarInfo` is optional, so a missing one falls back to the

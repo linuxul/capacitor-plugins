@@ -33,6 +33,18 @@ final class StatusBarPluginTests: XCTestCase {
         XCTAssertEqual(settle(StatusBarPlugin().setBackgroundColor, "setBackgroundColor", ["color": "#FF0000"]), .resolved)
     }
 
+    func testSetBackgroundColorThrowsWithoutCode() {
+        let call = CAPPluginCall(callbackId: "test", methodName: "setBackgroundColor", options: [:], success: { _, _ in
+            XCTFail("setBackgroundColor must not resolve")
+        }, error: { _ in
+            XCTFail("setBackgroundColor answers by throwing")
+        })
+        XCTAssertThrowsError(try StatusBarPlugin().setBackgroundColor(call)) { error in
+            XCTAssertEqual((error as? CAPPluginError)?.message, "Color must be provided")
+            XCTAssertNil((error as? CAPPluginError)?.code)
+        }
+    }
+
     func testSetOverlaysWebViewWithoutOverlayResolvesLikeAndroid() {
         XCTAssertEqual(settle(StatusBarPlugin().setOverlaysWebView, "setOverlaysWebView", [:]), .resolved)
     }
@@ -46,7 +58,7 @@ final class StatusBarPluginTests: XCTestCase {
             XCTFail("getInfo answers by throwing")
         })
         do {
-            try await StatusBarPlugin().getInfo(call)
+            _ = try await StatusBarPlugin().getInfo(call)
             XCTFail("getInfo must throw")
         } catch let error as CAPPluginError {
             XCTAssertEqual(error.message, "Unable to get the status bar info: the status bar is not available")
@@ -65,6 +77,20 @@ final class StatusBarPluginTests: XCTestCase {
         XCTAssertEqual(dict["height"] as? CGFloat, 0)
     }
 
+    func testGetInfoResultHasTheFieldsOfTheEvents() throws {
+        let info = StatusBarInfo(overlays: false, visible: true, style: "LIGHT", color: "#AABBCC", height: 54)
+        let object = StatusBarPlugin.toJSObject(info)
+        XCTAssertEqual(object["visible"] as? Bool, true)
+        XCTAssertEqual(object["style"] as? String, "LIGHT")
+        XCTAssertEqual(object["color"] as? String, "#AABBCC")
+        XCTAssertEqual(object["overlays"] as? Bool, false)
+        XCTAssertEqual((object["height"] as? NSNumber)?.doubleValue, 54)
+        let json = try JSONSerialization.data(withJSONObject: object as [String: Any])
+        let eventJson = try JSONSerialization.data(withJSONObject: StatusBarPlugin.toDict(info))
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: json) as? NSDictionary,
+                       try JSONSerialization.jsonObject(with: eventJson) as? NSDictionary)
+    }
+
     func testInfoKeepsTheFieldsThatArePresent() {
         let info = StatusBarInfo(overlays: false, visible: false, style: "DARK", color: "#112233", height: 47)
         let dict = StatusBarPlugin.toDict(info)
@@ -80,16 +106,22 @@ final class StatusBarPluginTests: XCTestCase {
         case rejected(String)
     }
 
-    private func settle(_ method: (CAPPluginCall) -> Void, _ name: String, _ options: JSObject) -> Outcome? {
+    /// Calls `method` as the bridge does: an error it throws rejects the call.
+    private func settle(_ method: (CAPPluginCall) throws -> Void, _ name: String, _ options: JSObject) -> Outcome? {
         let settled = expectation(description: "\(name) settles")
         var outcome: Outcome?
-        method(CAPPluginCall(callbackId: "test", methodName: name, options: options, success: { _, _ in
+        let call = CAPPluginCall(callbackId: "test", methodName: name, options: options, success: { _, _ in
             outcome = .resolved
             settled.fulfill()
         }, error: { error in
             outcome = .rejected(error.message)
             settled.fulfill()
-        }))
+        })
+        do {
+            try method(call)
+        } catch {
+            call.reject(error)
+        }
         wait(for: [settled], timeout: timeout)
         return outcome
     }
