@@ -4,6 +4,7 @@ import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONException
@@ -26,11 +27,7 @@ public class PreferencesPlugin : Plugin() {
 
     @PluginMethod
     public fun get(call: PluginCall) {
-        val key = call.getString("key")
-        if (key == null) {
-            call.reject("Must provide key")
-            return
-        }
+        val key = call.getString("key") ?: throw PluginException("Must provide key")
 
         val value = preferences.get(key)
 
@@ -41,11 +38,7 @@ public class PreferencesPlugin : Plugin() {
 
     @PluginMethod
     public fun set(call: PluginCall) {
-        val key = call.getString("key")
-        if (key == null) {
-            call.reject("Must provide key")
-            return
-        }
+        val key = call.getString("key") ?: throw PluginException("Must provide key")
 
         preferences.set(key, call.getString("value"))
 
@@ -54,11 +47,7 @@ public class PreferencesPlugin : Plugin() {
 
     @PluginMethod
     public fun remove(call: PluginCall) {
-        val key = call.getString("key")
-        if (key == null) {
-            call.reject("Must provide key")
-            return
-        }
+        val key = call.getString("key") ?: throw PluginException("Must provide key")
 
         preferences.remove(key)
 
@@ -73,8 +62,7 @@ public class PreferencesPlugin : Plugin() {
         try {
             ret.put("keys", JSArray(keys))
         } catch (ex: JSONException) {
-            call.reject("Unable to serialize response.", ex = ex)
-            return
+            throw PluginException("Unable to serialize response.", cause = ex)
         }
         call.resolve(ret)
     }
