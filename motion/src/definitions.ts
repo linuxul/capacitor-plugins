@@ -29,71 +29,71 @@ export type OrientationListenerEvent = RotationRate;
 
 export interface RotationRate {
   /**
-   * The amount of rotation around the Z axis, in degrees per second.
+   * The amount of rotation around the Z axis, in degrees per second. `null` when the device cannot provide it.
    *
    * @since 1.0.0
    */
-  alpha: number;
+  alpha: number | null;
 
   /**
-   * The amount of rotation around the X axis, in degrees per second.
+   * The amount of rotation around the X axis, in degrees per second. `null` when the device cannot provide it.
    *
    * @since 1.0.0
    */
-  beta: number;
+  beta: number | null;
 
   /**
-   * The amount of rotation around the Y axis, in degrees per second.
+   * The amount of rotation around the Y axis, in degrees per second. `null` when the device cannot provide it.
    *
    * @since 1.0.0
    */
-  gamma: number;
+  gamma: number | null;
 }
 
 export interface Acceleration {
   /**
-   * The amount of acceleration along the X axis.
+   * The amount of acceleration along the X axis. `null` when the device cannot provide it.
    *
    * @since 1.0.0
    */
-  x: number;
+  x: number | null;
 
   /**
-   * The amount of acceleration along the Y axis.
+   * The amount of acceleration along the Y axis. `null` when the device cannot provide it.
    *
    * @since 1.0.0
    */
-  y: number;
+  y: number | null;
 
   /**
-   * The amount of acceleration along the Z axis.
+   * The amount of acceleration along the Z axis. `null` when the device cannot provide it.
    *
    * @since 1.0.0
    */
-  z: number;
+  z: number | null;
 }
 
 export interface AccelListenerEvent {
   /**
-   * An object giving the acceleration of the device on the three axis X, Y and Z. Acceleration is expressed in m/s
+   * An object giving the acceleration of the device on the three axis X, Y and Z. Acceleration is expressed in m/s. `null` when the device has no accelerometer.
    *
    * @since 1.0.0
    */
-  acceleration: Acceleration;
+  acceleration: Acceleration | null;
 
   /**
-   * An object giving the acceleration of the device on the three axis X, Y and Z with the effect of gravity. Acceleration is expressed in m/s
+   * An object giving the acceleration of the device on the three axis X, Y and Z with the effect of gravity. Acceleration is expressed in m/s. `null` when the device has no accelerometer.
    *
    * @since 1.0.0
    */
-  accelerationIncludingGravity: Acceleration;
+  accelerationIncludingGravity: Acceleration | null;
 
   /**
-   * An object giving the rate of change of the device's orientation on the three orientation axis alpha, beta and gamma. Rotation rate is expressed in degrees per seconds.
+   * An object giving the rate of change of the device's orientation on the three orientation axis alpha, beta and gamma. Rotation rate is expressed in degrees per seconds. `null` when the device has no gyroscope.
    *
    * @since 1.0.0
    */
-  rotationRate: RotationRate;
+  rotationRate: RotationRate | null;
 
   /**
    * A number representing the interval of time, in milliseconds, at which data is obtained from the device.
