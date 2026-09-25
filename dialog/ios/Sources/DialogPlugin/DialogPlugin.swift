@@ -10,12 +10,12 @@ public class DialogPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "DialogPlugin"
     public let jsName = "Dialog"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "alert", returnType: .promise),
-        CAPPluginMethod(name: "prompt", returnType: .promise),
-        CAPPluginMethod(name: "confirm", returnType: .promise)
+        .promise("alert", DialogPlugin.alert),
+        .promise("prompt", DialogPlugin.prompt),
+        .promise("confirm", DialogPlugin.confirm)
     ]
 
-    @objc public func alert(_ call: CAPPluginCall) {
+    public func alert(_ call: CAPPluginCall) {
         let title = call.options["title"] as? String
         guard let message = call.options["message"] as? String else {
             call.reject("Please provide a message for the dialog")
@@ -32,7 +32,7 @@ public class DialogPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc public func confirm(_ call: CAPPluginCall) {
+    public func confirm(_ call: CAPPluginCall) {
         let title = call.options["title"] as? String
         guard let message = call.options["message"] as? String else {
             call.reject("Please provide a message for the dialog")
@@ -57,7 +57,7 @@ public class DialogPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc public func prompt(_ call: CAPPluginCall) {
+    public func prompt(_ call: CAPPluginCall) {
         let title = call.options["title"] as? String
         guard let message = call.options["message"] as? String else {
             call.reject("Please provide a message for the dialog")
