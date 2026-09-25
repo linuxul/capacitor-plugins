@@ -59,6 +59,14 @@ public class PushNotificationsPlugin : Plugin() {
         notificationChannelManager = NotificationChannelManager(activity, notificationManager, config)
     }
 
+    override fun handleOnDestroy() {
+        // Without a plugin, messages wait in lastMessage for the next one. Keeping the bridge kept the destroyed
+        // activity, and handed those messages to a plugin whose web view is gone.
+        if (staticBridge === bridge) {
+            staticBridge = null
+        }
+    }
+
     override fun handleOnNewIntent(intent: Intent?) {
         super.handleOnNewIntent(intent)
         val bundle = intent?.extras
@@ -156,13 +164,14 @@ public class PushNotificationsPlugin : Plugin() {
             return
         }
 
+        var hasInvalidEntry = false
         try {
             for (o in notifications.toList<Any?>()) {
                 // The Java implementation threw a NullPointerException for an object without an id
                 val notif = (o as? JSONObject)?.let { JSObject.fromJSONObject(it) }
                 val id = notif?.getInteger("id")
                 if (notif == null || id == null) {
-                    call.reject("Expected notifications to be a list of notification objects")
+                    hasInvalidEntry = true
                     continue
                 }
 
@@ -174,10 +183,16 @@ public class PushNotificationsPlugin : Plugin() {
                 }
             }
         } catch (e: JSONException) {
-            call.reject(e.message)
+            call.reject(e.message, ex = e)
+            return
         }
 
-        call.resolve()
+        // The valid entries are cancelled either way. Rejecting inside the loop and resolving here settled the call twice.
+        if (hasInvalidEntry) {
+            call.reject("Expected notifications to be a list of notification objects")
+        } else {
+            call.resolve()
+        }
     }
 
     @PluginMethod
@@ -328,6 +343,7 @@ public class PushNotificationsPlugin : Plugin() {
         private const val EVENT_TOKEN_ERROR = "registrationError"
 
         @JvmField
+        @Volatile
         public var staticBridge: Bridge? = null
 
         @JvmField
