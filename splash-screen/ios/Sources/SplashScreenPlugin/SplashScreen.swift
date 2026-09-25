@@ -10,6 +10,13 @@ import Capacitor
     var config: SplashScreenConfig = SplashScreenConfig()
     var hideTask: Any?
     var isVisible: Bool = false
+    // Keeps the splash sized to the window while it is shown, when the parent view rotates or resizes. The observations
+    // are invalidated when the splash is torn down; the string-based observers they replace were never removed.
+    private var parentViewObservations: [NSKeyValueObservation] = []
+
+    var isObservingParentView: Bool {
+        return !parentViewObservations.isEmpty
+    }
 
     init(parentView: UIView, config: SplashScreenConfig) {
         self.parentView = parentView
@@ -55,6 +62,7 @@ import Capacitor
                 }
             }
 
+            strongSelf.observeParentView()
             strongSelf.parentView.addSubview(strongSelf.viewController.view)
 
             if strongSelf.config.showSpinner {
@@ -65,13 +73,14 @@ import Capacitor
 
             strongSelf.parentView.isUserInteractionEnabled = false
 
-            UIView.transition(with: strongSelf.viewController.view, duration: TimeInterval(Double(settings.fadeInDuration) / 1000), options: .curveLinear, animations: {
+            let fadeInDuration = TimeInterval(Double(settings.fadeInDuration) / 1000)
+            UIView.transition(with: strongSelf.viewController.view, duration: fadeInDuration, options: .curveLinear, animations: {
                 strongSelf.viewController.view.alpha = 1
 
                 if strongSelf.config.showSpinner {
                     strongSelf.spinner.alpha = 1
                 }
-            }) { (_: Bool) in
+            }, completion: { (_: Bool) in
                 strongSelf.isVisible = true
 
                 if settings.autoHide {
@@ -84,19 +93,16 @@ import Capacitor
                 } else {
                     completion()
                 }
-            }
+            })
         }
     }
 
     private func buildViews() {
         let storyboardName = Bundle.main.infoDictionary?["UILaunchStoryboardName"] as? String ?? "LaunchScreen"
-        if let vc = UIStoryboard(name: storyboardName.replacingOccurrences(of: ".storyboard", with: ""), bundle: nil).instantiateInitialViewController() {
-            viewController = vc
+        let storyboard = UIStoryboard(name: storyboardName.replacingOccurrences(of: ".storyboard", with: ""), bundle: nil)
+        if let launchViewController = storyboard.instantiateInitialViewController() {
+            viewController = launchViewController
         }
-
-        // Observe for changes on frame and bounds to handle rotation resizing
-        parentView.addObserver(self, forKeyPath: "frame", options: .new, context: nil)
-        parentView.addObserver(self, forKeyPath: "bounds", options: .new, context: nil)
 
         updateSplashImageBounds()
         if config.showSpinner {
@@ -105,10 +111,28 @@ import Capacitor
         }
     }
 
+    /// Starts resizing the splash with the parent view, which rotation resizes. Call on the main thread.
+    private func observeParentView() {
+        updateSplashImageBounds()
+        guard parentViewObservations.isEmpty else {
+            return
+        }
+        parentViewObservations = [
+            parentView.observe(\.frame, options: [.new]) { [weak self] _, _ in
+                self?.updateSplashImageBounds()
+            },
+            parentView.observe(\.bounds, options: [.new]) { [weak self] _, _ in
+                self?.updateSplashImageBounds()
+            }
+        ]
+    }
+
     private func tearDown() {
         isVisible = false
         parentView.isUserInteractionEnabled = true
         viewController.view.removeFromSuperview()
+        parentViewObservations.forEach { $0.invalidate() }
+        parentViewObservations = []
 
         if config.showSpinner {
             spinner.removeFromSuperview()
@@ -118,44 +142,51 @@ import Capacitor
     // Update the bounds for the splash image. This will also be called when
     // the parent view observers fire
     private func updateSplashImageBounds() {
-        var window: UIWindow? = UIApplication.shared.delegate?.window ?? nil
-
-        if window == nil {
-            let scene: UIWindowScene? = UIApplication.shared.connectedScenes.first as? UIWindowScene
-            window = scene?.windows.filter({$0.isKeyWindow}).first
-            if window == nil {
-                window = scene?.windows.first
-            }
-        }
-
-        if let unwrappedWindow = window {
-            viewController.view.frame = CGRect(origin: CGPoint(x: 0, y: 0), size: unwrappedWindow.bounds.size)
+        if let window = parentView.window ?? SplashScreen.foregroundWindow() {
+            viewController.view.frame = CGRect(origin: CGPoint(x: 0, y: 0), size: window.bounds.size)
         } else {
             CAPLog.print("Unable to find root window object for SplashScreen bounds. Please file an issue")
         }
     }
 
-    override public func observeValue(forKeyPath keyPath: String?, of object: Any?, change _: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
-        updateSplashImageBounds()
+    /// The window of the foreground scene, for when the splash is built before the web view is in a window.
+    /// `UIApplication.delegate.window` is nil in apps with a scene delegate, and `connectedScenes.first` can be a
+    /// background scene. Call on the main thread.
+    private static func foregroundWindow() -> UIWindow? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let scene = preferredScene(scenes, activationState: { $0.activationState }) else {
+            return nil
+        }
+        return scene.keyWindow ?? scene.windows.first
+    }
+
+    /// The first foreground-active scene, else the first foreground-inactive one (a scene that is still launching),
+    /// else the first scene.
+    static func preferredScene<Scene>(_ scenes: [Scene], activationState: (Scene) -> UIScene.ActivationState) -> Scene? {
+        return scenes.first { activationState($0) == .foregroundActive }
+            ?? scenes.first { activationState($0) == .foregroundInactive }
+            ?? scenes.first
     }
 
     private func hideSplash(fadeOutDuration: Int, isLaunchSplash: Bool) {
-        if isLaunchSplash, isVisible {
-            CAPLog.print("SplashScreen.hideSplash: SplashScreen was automatically hidden after default timeout. " +
-                            "You should call `SplashScreen.hide()` as soon as your web app is loaded (or increase the timeout). " +
-                            "Read more at https://capacitorjs.com/docs/apis/splash-screen#hiding-the-splash-screen")
-        }
-        if !isVisible { return }
+        // isVisible changes on the main queue; hide is also called from the bridge queue.
         DispatchQueue.main.async {
-            UIView.transition(with: self.viewController.view, duration: TimeInterval(Double(fadeOutDuration) / 1000), options: .curveLinear, animations: {
+            if isLaunchSplash, self.isVisible {
+                CAPLog.print("SplashScreen.hideSplash: SplashScreen was automatically hidden after default timeout. " +
+                                "You should call `SplashScreen.hide()` as soon as your web app is loaded (or increase the timeout). " +
+                                "Read more at https://capacitorjs.com/docs/apis/splash-screen#hiding-the-splash-screen")
+            }
+            if !self.isVisible { return }
+            let duration = TimeInterval(Double(fadeOutDuration) / 1000)
+            UIView.transition(with: self.viewController.view, duration: duration, options: .curveLinear, animations: {
                 self.viewController.view.alpha = 0
 
                 if self.config.showSpinner {
                     self.spinner.alpha = 0
                 }
-            }) { (_: Bool) in
+            }, completion: { (_: Bool) in
                 self.tearDown()
-            }
+            })
         }
     }
 }
