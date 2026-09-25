@@ -30,8 +30,11 @@ public class ScreenOrientationPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc public func orientation(_ call: CAPPluginCall) {
-        let orientationType = implementation.getCurrentOrientationType()
-        call.resolve(["type": orientationType])
+        // UIDevice is UIKit state: read it on the main queue, not the bridge queue.
+        let implementation = self.implementation
+        DispatchQueue.main.async {
+            call.resolve(["type": implementation.getCurrentOrientationType()])
+        }
     }
 
     @objc public func lock(_ call: CAPPluginCall) {
@@ -42,18 +45,19 @@ public class ScreenOrientationPlugin: CAPPlugin, CAPBridgedPlugin {
         implementation.lock(lockToOrientation) { error in
             if let error = error {
                 call.reject(error.localizedDescription)
+            } else {
+                call.resolve()
             }
-            call.resolve()
         }
-
     }
 
     @objc public func unlock(_ call: CAPPluginCall) {
         implementation.unlock { error in
             if let error = error {
                 call.reject(error.localizedDescription)
+            } else {
+                call.resolve()
             }
-            call.resolve()
         }
     }
 
