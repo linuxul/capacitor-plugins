@@ -3,8 +3,6 @@ import Capacitor
 @testable import AppLauncherPlugin
 
 final class AppLauncherPluginTests: XCTestCase {
-    private let timeout: TimeInterval = 20
-
     @MainActor
     func testCanOpenUrlWithoutAUrlIsRejected() async {
         let error = await canOpenUrlError(options: [:])
@@ -19,17 +17,38 @@ final class AppLauncherPluginTests: XCTestCase {
         XCTAssertNil(error?.code)
     }
 
-    func testOpenUrlWithoutAUrlIsRejected() {
-        let settled = expectation(description: "openUrl settles")
-        var rejection: String?
-        AppLauncherPlugin().openUrl(CAPPluginCall(callbackId: "test", methodName: "openUrl", options: [:], success: { _, _ in
-            settled.fulfill()
-        }, error: { error in
-            rejection = error.message
-            settled.fulfill()
-        }))
-        wait(for: [settled], timeout: timeout)
-        XCTAssertEqual(rejection, "Must supply a URL")
+    @MainActor
+    func testOpenUrlWithoutAUrlIsRejected() async {
+        let error = await openUrlError(options: [:])
+        XCTAssertEqual(error?.message, "Must supply a URL")
+        XCTAssertNil(error?.code)
+    }
+
+    @MainActor
+    func testOpenUrlWithAnInvalidUrlIsRejected() async {
+        let error = await openUrlError(options: ["url": ""])
+        XCTAssertEqual(error?.message, "Invalid URL")
+        XCTAssertNil(error?.code)
+    }
+
+    /// The error openUrl throws, which the bridge rejects the call with; nil when it returns.
+    @MainActor
+    private func openUrlError(options: JSObject) async -> CAPPluginError? {
+        let call = CAPPluginCall(callbackId: "test", methodName: "openUrl", options: options, success: { _, _ in
+            XCTFail("openUrl answers by returning or throwing")
+        }, error: { _ in
+            XCTFail("openUrl answers by returning or throwing")
+        })
+        do {
+            _ = try await AppLauncherPlugin().openUrl(call)
+            XCTFail("openUrl must throw")
+            return nil
+        } catch let error as CAPPluginError {
+            return error
+        } catch {
+            XCTFail("unexpected error \(error)")
+            return nil
+        }
     }
 
     /// The error canOpenUrl throws, which the bridge rejects the call with; nil when it returns.
