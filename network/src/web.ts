@@ -49,7 +49,7 @@ function translatedConnection(): ConnectionType {
   return result;
 }
 
-export class NetworkWeb extends WebPlugin implements NetworkPlugin {
+export class NetworkWeb extends WebPlugin<{ networkStatusChange: ConnectionStatus }> implements NetworkPlugin {
   constructor() {
     super();
     if (typeof window !== 'undefined') {
