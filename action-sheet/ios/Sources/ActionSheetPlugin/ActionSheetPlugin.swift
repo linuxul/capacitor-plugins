@@ -11,12 +11,12 @@ public class ActionSheetPlugin: CAPPlugin, CAPBridgedPlugin, UIAdaptivePresentat
     public let identifier = "ActionSheetPlugin"
     public let jsName = "ActionSheet"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "showActions", returnType: .promise)
+        .promise("showActions", ActionSheetPlugin.showActions)
     ]
     private let implementation = ActionSheet()
     private var currentCall: CAPPluginCall?
 
-    @objc func showActions(_ call: CAPPluginCall) {
+    func showActions(_ call: CAPPluginCall) {
         let title = call.options["title"] as? String
         let message = call.options["message"] as? String
         let options = call.getArray("options", JSObject.self) ?? []
