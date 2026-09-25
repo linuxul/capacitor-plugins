@@ -15,6 +15,7 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
@@ -100,12 +101,8 @@ public class LocalNotificationsPlugin : Plugin() {
     @PluginMethod
     public fun registerActionTypes(call: PluginCall) {
         val types = call.getArray("types")
-        val typesArray = NotificationAction.buildTypes(types)
-        if (typesArray == null) {
-            // A type without an id used to end in a NullPointerException
-            call.reject("Action type missing identifier")
-            return
-        }
+        // A type without an id used to end in a NullPointerException
+        val typesArray = NotificationAction.buildTypes(types) ?: throw PluginException("Action type missing identifier")
         notificationStorage.writeActionGroup(typesArray)
         call.resolve()
     }
@@ -155,12 +152,9 @@ public class LocalNotificationsPlugin : Plugin() {
 
     @PluginMethod
     public fun removeDeliveredNotifications(call: PluginCall) {
-        val notifications = call.getArray("notifications")
-        if (notifications == null) {
-            // Used to end in a NullPointerException
-            call.reject("Must provide notifications array as notifications option")
-            return
-        }
+        // Used to end in a NullPointerException
+        val notifications =
+            call.getArray("notifications") ?: throw PluginException("Must provide notifications array as notifications option")
 
         var hasInvalidEntry = false
         try {
@@ -187,10 +181,9 @@ public class LocalNotificationsPlugin : Plugin() {
 
         // The valid entries are cancelled either way. Rejecting inside the loop and resolving here settled the call twice.
         if (hasInvalidEntry) {
-            call.reject("Expected notifications to be a list of notification objects")
-        } else {
-            call.resolve()
+            throw PluginException("Expected notifications to be a list of notification objects")
         }
+        call.resolve()
     }
 
     @PluginMethod
