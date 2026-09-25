@@ -30,21 +30,21 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "LocalNotificationsPlugin"
     public let jsName = "LocalNotifications"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "schedule", returnType: .promise),
-        CAPPluginMethod(name: "requestPermissions", returnType: .promise),
-        CAPPluginMethod(name: "checkPermissions", returnType: .promise),
-        CAPPluginMethod(name: "checkExactNotificationSetting", returnType: .promise),
-        CAPPluginMethod(name: "changeExactNotificationSetting", returnType: .promise),
-        CAPPluginMethod(name: "cancel", returnType: .promise),
-        CAPPluginMethod(name: "getPending", returnType: .promise),
-        CAPPluginMethod(name: "registerActionTypes", returnType: .promise),
-        CAPPluginMethod(name: "areEnabled", returnType: .promise),
-        CAPPluginMethod(name: "getDeliveredNotifications", returnType: .promise),
-        CAPPluginMethod(name: "removeAllDeliveredNotifications", returnType: .promise),
-        CAPPluginMethod(name: "removeDeliveredNotifications", returnType: .promise),
-        CAPPluginMethod(name: "createChannel", returnType: .promise),
-        CAPPluginMethod(name: "deleteChannel", returnType: .promise),
-        CAPPluginMethod(name: "listChannels", returnType: .promise)
+        .promise("schedule", LocalNotificationsPlugin.schedule),
+        .promise("requestPermissions", LocalNotificationsPlugin.requestPermissions),
+        .promise("checkPermissions", LocalNotificationsPlugin.checkPermissions),
+        .promise("checkExactNotificationSetting", LocalNotificationsPlugin.checkExactNotificationSetting),
+        .promise("changeExactNotificationSetting", LocalNotificationsPlugin.changeExactNotificationSetting),
+        .promise("cancel", LocalNotificationsPlugin.cancel),
+        .promise("getPending", LocalNotificationsPlugin.getPending),
+        .promise("registerActionTypes", LocalNotificationsPlugin.registerActionTypes),
+        .promise("areEnabled", LocalNotificationsPlugin.areEnabled),
+        .promise("getDeliveredNotifications", LocalNotificationsPlugin.getDeliveredNotifications),
+        .promise("removeAllDeliveredNotifications", LocalNotificationsPlugin.removeAllDeliveredNotifications),
+        .promise("removeDeliveredNotifications", LocalNotificationsPlugin.removeDeliveredNotifications),
+        .promise("createChannel", LocalNotificationsPlugin.createChannel),
+        .promise("deleteChannel", LocalNotificationsPlugin.deleteChannel),
+        .promise("listChannels", LocalNotificationsPlugin.listChannels)
     ]
     private let notificationDelegationHandler = LocalNotificationsHandler()
 
@@ -57,7 +57,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Schedule a notification.
      */
-    @objc func schedule(_ call: CAPPluginCall) {
+    func schedule(_ call: CAPPluginCall) {
         guard let notifications = call.getArray("notifications", JSObject.self) else {
             call.reject("Must provide notifications array as notifications option")
             return
@@ -133,7 +133,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Request notification permission
      */
-    @objc override public func requestPermissions(_ call: CAPPluginCall) {
+    override public func requestPermissions(_ call: CAPPluginCall) {
         self.notificationDelegationHandler.requestPermissions { granted, error in
             if let error {
                 call.reject(error.localizedDescription)
@@ -143,7 +143,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc override public func checkPermissions(_ call: CAPPluginCall) {
+    override public func checkPermissions(_ call: CAPPluginCall) {
         self.notificationDelegationHandler.checkPermissions { status in
             let permission: String
 
@@ -162,18 +162,18 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc public func checkExactNotificationSetting(_ call: CAPPluginCall) {
+    public func checkExactNotificationSetting(_ call: CAPPluginCall) {
         call.unimplemented()
     }
 
-    @objc public func changeExactNotificationSetting(_ call: CAPPluginCall) {
+    public func changeExactNotificationSetting(_ call: CAPPluginCall) {
         call.unimplemented()
     }
 
     /**
      * Cancel notifications by id
      */
-    @objc func cancel(_ call: CAPPluginCall) {
+    func cancel(_ call: CAPPluginCall) {
         guard let notifications = call.getArray("notifications", JSObject.self), notifications.count > 0 else {
             call.reject("Must supply notifications to cancel")
             return
@@ -195,7 +195,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Get all pending notifications.
      */
-    @objc func getPending(_ call: CAPPluginCall) {
+    func getPending(_ call: CAPPluginCall) {
         UNUserNotificationCenter.current().getPendingNotificationRequests(completionHandler: { (notifications) in
             CAPLog.print("num of pending notifications \(notifications.count)")
             CAPLog.print(notifications)
@@ -213,7 +213,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Register allowed action types that a notification may present.
      */
-    @objc func registerActionTypes(_ call: CAPPluginCall) {
+    func registerActionTypes(_ call: CAPPluginCall) {
         guard let types = call.getArray("types", JSObject.self) else {
             call.reject("Must provide types array as types option")
             return
@@ -227,7 +227,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Check if Local Notifications are authorized and enabled
      */
-    @objc func areEnabled(_ call: CAPPluginCall) {
+    func areEnabled(_ call: CAPPluginCall) {
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { (settings) in
             let authorized = settings.authorizationStatus == UNAuthorizationStatus.authorized
@@ -241,7 +241,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Get notifications in Notification Center
      */
-    @objc func getDeliveredNotifications(_ call: CAPPluginCall) {
+    func getDeliveredNotifications(_ call: CAPPluginCall) {
         UNUserNotificationCenter.current().getDeliveredNotifications(completionHandler: { (notifications) in
             let ret = notifications.map({ (notification) -> [String: Any] in
                 return self.notificationDelegationHandler.makeNotificationRequestJSObject(notification.request)
@@ -255,7 +255,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Remove specified notifications from Notification Center
      */
-    @objc func removeDeliveredNotifications(_ call: CAPPluginCall) {
+    func removeDeliveredNotifications(_ call: CAPPluginCall) {
         guard let notifications = call.getArray("notifications", JSObject.self) else {
             call.reject("Must supply notifications to remove")
             return
@@ -269,7 +269,7 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Remove all notifications from Notification Center
      */
-    @objc func removeAllDeliveredNotifications(_ call: CAPPluginCall) {
+    func removeAllDeliveredNotifications(_ call: CAPPluginCall) {
         let center = UNUserNotificationCenter.current()
         center.removeAllDeliveredNotifications()
         center.setBadgeCount(0) { error in
@@ -280,15 +280,15 @@ public class LocalNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func createChannel(_ call: CAPPluginCall) {
+    func createChannel(_ call: CAPPluginCall) {
         call.unimplemented()
     }
 
-    @objc func deleteChannel(_ call: CAPPluginCall) {
+    func deleteChannel(_ call: CAPPluginCall) {
         call.unimplemented()
     }
 
-    @objc func listChannels(_ call: CAPPluginCall) {
+    func listChannels(_ call: CAPPluginCall) {
         call.unimplemented()
     }
 }
