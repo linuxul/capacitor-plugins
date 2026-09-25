@@ -28,7 +28,9 @@ import com.getcapacitor.Logger
 import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PluginThread
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
@@ -101,7 +103,9 @@ public class CameraPlugin : Plugin() {
     // Decodes and encodes the images. Activity results arrive on the main thread, which must not do this work.
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
-    @PluginMethod
+    // The photo prompt is a fragment, which is shown from the main thread. Camera and picker requests are started
+    // from there as well, as they are when the prompt answers.
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun getPhoto(call: PluginCall) {
         withActiveCall(call) {
             resetCallState(call)
@@ -120,15 +124,14 @@ public class CameraPlugin : Plugin() {
     /**
      * Runs [block] with [call] as the active call: it becomes the active call when none is in progress, or already is
      * (a result arriving for it, or a call Android restored after ending the app while the camera was in front). When
-     * another call is in progress, [call] is rejected instead, since the state belongs to that call.
+     * another call is in progress, this throws instead, which rejects [call], since the state belongs to that call.
      *
      * The bridge rejects a call with what a plugin method or an activity or permission callback throws, without going
      * through [rejectActiveCall], so this ends [call] when [block] throws: otherwise no later call could begin.
      */
     private inline fun withActiveCall(call: PluginCall, block: () -> Unit) {
         if (!activeCall.begin(call)) {
-            call.reject(CALL_IN_PROGRESS_ERROR)
-            return
+            throw PluginException(CALL_IN_PROGRESS_ERROR)
         }
         try {
             block()
@@ -205,14 +208,12 @@ public class CameraPlugin : Plugin() {
             },
             { rejectActiveCall(call, USER_CANCELLED) }
         )
-        // Plugin methods run on the bridge thread, and fragments are shown from the main thread
-        bridge.executeOnMainThread {
-            try {
-                fragment.show(activity.supportFragmentManager, "capacitorModalsActionSheet")
-            } catch (ex: IllegalStateException) {
-                // The activity has already saved its state
-                rejectActiveCall(call, PROMPT_ERROR, ex)
-            }
+        // Called on the main thread (getPhoto, or the camera permission callback), where fragments are shown
+        try {
+            fragment.show(activity.supportFragmentManager, "capacitorModalsActionSheet")
+        } catch (ex: IllegalStateException) {
+            // The activity has already saved its state
+            rejectActiveCall(call, PROMPT_ERROR, ex)
         }
     }
 

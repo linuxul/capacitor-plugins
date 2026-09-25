@@ -5,9 +5,10 @@ package com.capacitorjs.plugins.camera
  * files in its own fields, so a call that began while another is in progress would take them over; [begin] turns it
  * away instead.
  *
- * The plugin thread begins a call, and the main thread (prompt, picker, activity and permission results) and the
- * plugin's executor (image work) end it, so every function is synchronized. Calls are told apart by identity: the
- * bridge hands the activity and permission callbacks the instance the plugin method got.
+ * The plugin methods begin a call (getPhoto on the main thread, pickImages on the plugin thread), and the main thread
+ * (prompt, picker, activity and permission results) and the plugin's executor (image work) end it, so every function
+ * is synchronized. Calls are told apart by identity: the bridge hands the activity and permission callbacks the
+ * instance the plugin method got.
  */
 internal class ActiveCall<T : Any> {
     private var call: T? = null
