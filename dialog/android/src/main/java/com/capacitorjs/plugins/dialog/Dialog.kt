@@ -16,6 +16,19 @@ public object Dialog {
     }
 
     /**
+     * Runs [block] right away on the main thread, and posts it to the main thread from any other thread. DialogPlugin
+     * calls from the main thread, so what showing a dialog throws rejects its call instead of crashing the app.
+     */
+    private inline fun onMainThread(crossinline block: () -> Unit) {
+        val mainLooper = Looper.getMainLooper()
+        if (mainLooper.isCurrentThread) {
+            block()
+        } else {
+            Handler(mainLooper).post { block() }
+        }
+    }
+
+    /**
      * Show an alert window
      * @param context the context
      * @param message the message for the alert
@@ -27,7 +40,7 @@ public object Dialog {
     public fun alert(context: Context, message: String?, title: String? = null, okButtonTitle: String? = null, listener: OnResultListener) {
         val alertOkButtonTitle = okButtonTitle ?: "OK"
 
-        Handler(Looper.getMainLooper()).post {
+        onMainThread {
             val builder = AlertDialog.Builder(context)
 
             if (title != null) {
@@ -59,7 +72,7 @@ public object Dialog {
         val confirmOkButtonTitle = okButtonTitle ?: "OK"
         val confirmCancelButtonTitle = cancelButtonTitle ?: "Cancel"
 
-        Handler(Looper.getMainLooper()).post {
+        onMainThread {
             val builder = AlertDialog.Builder(context)
             if (title != null) {
                 builder.setTitle(title)
@@ -97,7 +110,7 @@ public object Dialog {
         val promptInputPlaceholder = inputPlaceholder ?: ""
         val promptInputText = inputText ?: ""
 
-        Handler(Looper.getMainLooper()).post {
+        onMainThread {
             val builder = AlertDialog.Builder(context)
             val input = EditText(context)
 
