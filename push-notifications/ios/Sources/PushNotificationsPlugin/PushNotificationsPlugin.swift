@@ -19,16 +19,16 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "PushNotificationsPlugin"
     public let jsName = "PushNotifications"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "register", returnType: .promise),
-        CAPPluginMethod(name: "unregister", returnType: .promise),
-        CAPPluginMethod(name: "checkPermissions", returnType: .promise),
-        CAPPluginMethod(name: "requestPermissions", returnType: .promise),
-        CAPPluginMethod(name: "getDeliveredNotifications", returnType: .promise),
-        CAPPluginMethod(name: "removeAllDeliveredNotifications", returnType: .promise),
-        CAPPluginMethod(name: "removeDeliveredNotifications", returnType: .promise),
-        CAPPluginMethod(name: "createChannel", returnType: .promise),
-        CAPPluginMethod(name: "listChannels", returnType: .promise),
-        CAPPluginMethod(name: "deleteChannel", returnType: .promise)
+        .promise("register", PushNotificationsPlugin.register),
+        .promise("unregister", PushNotificationsPlugin.unregister),
+        .promise("checkPermissions", PushNotificationsPlugin.checkPermissions),
+        .promise("requestPermissions", PushNotificationsPlugin.requestPermissions),
+        .promise("getDeliveredNotifications", PushNotificationsPlugin.getDeliveredNotifications),
+        .promise("removeAllDeliveredNotifications", PushNotificationsPlugin.removeAllDeliveredNotifications),
+        .promise("removeDeliveredNotifications", PushNotificationsPlugin.removeDeliveredNotifications),
+        .promise("createChannel", PushNotificationsPlugin.createChannel),
+        .promise("listChannels", PushNotificationsPlugin.listChannels),
+        .promise("deleteChannel", PushNotificationsPlugin.deleteChannel)
     ]
     private let notificationDelegateHandler = PushNotificationsHandler()
     private var appDelegateRegistrationCalled: Bool = false
@@ -55,7 +55,7 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Register for push notifications
      */
-    @objc func register(_ call: CAPPluginCall) {
+    func register(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             UIApplication.shared.registerForRemoteNotifications()
         }
@@ -65,7 +65,7 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Unregister for remote notifications
      */
-    @objc func unregister(_ call: CAPPluginCall) {
+    func unregister(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             UIApplication.shared.unregisterForRemoteNotifications()
             call.resolve()
@@ -75,7 +75,7 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Request notification permission
      */
-    @objc override public func requestPermissions(_ call: CAPPluginCall) {
+    override public func requestPermissions(_ call: CAPPluginCall) {
         self.notificationDelegateHandler.requestPermissions { granted, error in
             guard error == nil else {
                 if let err = error {
@@ -100,7 +100,7 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Check notification permission
      */
-    @objc override public func checkPermissions(_ call: CAPPluginCall) {
+    override public func checkPermissions(_ call: CAPPluginCall) {
         self.notificationDelegateHandler.checkPermissions { status in
             var result: PushNotificationsPermissions = .prompt
 
@@ -122,7 +122,7 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Get notifications in Notification Center
      */
-    @objc func getDeliveredNotifications(_ call: CAPPluginCall) {
+    func getDeliveredNotifications(_ call: CAPPluginCall) {
         if !appDelegateRegistrationCalled {
             call.reject("event capacitorDidRegisterForRemoteNotifications not called.  Visit https://capacitorjs.com/docs/apis/push-notifications for more information")
             return
@@ -140,7 +140,7 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Remove specified notifications from Notification Center
      */
-    @objc func removeDeliveredNotifications(_ call: CAPPluginCall) {
+    func removeDeliveredNotifications(_ call: CAPPluginCall) {
         if !appDelegateRegistrationCalled {
             call.reject("event capacitorDidRegisterForRemoteNotifications not called.  Visit https://capacitorjs.com/docs/apis/push-notifications for more information")
             return
@@ -158,7 +158,7 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     /**
      * Remove all notifications from Notification Center
      */
-    @objc func removeAllDeliveredNotifications(_ call: CAPPluginCall) {
+    func removeAllDeliveredNotifications(_ call: CAPPluginCall) {
         if !appDelegateRegistrationCalled {
             call.reject("event capacitorDidRegisterForRemoteNotifications not called.  Visit https://capacitorjs.com/docs/apis/push-notifications for more information")
             return
@@ -174,15 +174,15 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func createChannel(_ call: CAPPluginCall) {
+    func createChannel(_ call: CAPPluginCall) {
         call.unimplemented("Not available on iOS")
     }
 
-    @objc func deleteChannel(_ call: CAPPluginCall) {
+    func deleteChannel(_ call: CAPPluginCall) {
         call.unimplemented("Not available on iOS")
     }
 
-    @objc func listChannels(_ call: CAPPluginCall) {
+    func listChannels(_ call: CAPPluginCall) {
         call.unimplemented("Not available on iOS")
     }
 
