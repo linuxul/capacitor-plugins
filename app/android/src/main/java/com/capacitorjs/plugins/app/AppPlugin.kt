@@ -7,7 +7,9 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Logger
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PluginThread
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.util.InternalUtils
 import java.util.Locale
@@ -103,25 +105,14 @@ public class AppPlugin : Plugin() {
         call.resolve()
     }
 
-    @PluginMethod
+    // Enabling the callback registers it with the window's back dispatcher, which belongs to the main thread
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun toggleBackButtonHandler(call: PluginCall) {
-        val callback = onBackPressedCallback
-        if (callback == null) {
-            call.reject("onBackPressedCallback is not set")
-            return
-        }
+        val callback = onBackPressedCallback ?: throw PluginException("onBackPressedCallback is not set")
+        val enabled = call.getBoolean("enabled") ?: throw PluginException("enabled must be provided and must be a boolean")
 
-        val enabled = call.getBoolean("enabled")
-        if (enabled == null) {
-            call.reject("enabled must be provided and must be a boolean")
-            return
-        }
-
-        // Enabling the callback registers it with the window's back dispatcher, which belongs to the main thread
-        bridge.executeOnMainThread {
-            callback.isEnabled = enabled
-            call.resolve()
-        }
+        callback.isEnabled = enabled
+        call.resolve()
     }
 
     @PluginMethod
