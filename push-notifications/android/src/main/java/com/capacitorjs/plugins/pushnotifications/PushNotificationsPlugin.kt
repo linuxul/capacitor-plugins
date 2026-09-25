@@ -18,6 +18,7 @@ import com.getcapacitor.Logger
 import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
@@ -157,12 +158,9 @@ public class PushNotificationsPlugin : Plugin() {
 
     @PluginMethod
     public fun removeDeliveredNotifications(call: PluginCall) {
-        val notifications = call.getArray("notifications")
-        if (notifications == null) {
-            // The Java implementation threw a NullPointerException here
-            call.reject("Expected notifications to be a list of notification objects")
-            return
-        }
+        // The Java implementation threw a NullPointerException here
+        val notifications =
+            call.getArray("notifications") ?: throw PluginException("Expected notifications to be a list of notification objects")
 
         var hasInvalidEntry = false
         try {
@@ -189,10 +187,9 @@ public class PushNotificationsPlugin : Plugin() {
 
         // The valid entries are cancelled either way. Rejecting inside the loop and resolving here settled the call twice.
         if (hasInvalidEntry) {
-            call.reject("Expected notifications to be a list of notification objects")
-        } else {
-            call.resolve()
+            throw PluginException("Expected notifications to be a list of notification objects")
         }
+        call.resolve()
     }
 
     @PluginMethod
