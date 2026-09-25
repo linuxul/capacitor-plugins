@@ -6,6 +6,7 @@ import android.net.Uri
 import com.getcapacitor.Logger
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.util.WebColor
@@ -26,14 +27,9 @@ public class BrowserPlugin : Plugin() {
     @PluginMethod
     public fun open(call: PluginCall) {
         // get the URL
-        val urlString = call.getString("url")
-        if (urlString == null) {
-            call.reject("Must provide a URL to open")
-            return
-        }
+        val urlString = call.getString("url") ?: throw PluginException("Must provide a URL to open")
         if (urlString.isEmpty()) {
-            call.reject("URL must not be empty")
-            return
+            throw PluginException("URL must not be empty")
         }
         val url: Uri
         try {
