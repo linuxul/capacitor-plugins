@@ -11,17 +11,19 @@ public class ClipboardPlugin: CAPPlugin, CAPBridgedPlugin {
     ]
     private let implementation = Clipboard()
 
-    func read(_ call: CAPPluginCall) {
+    // UIPasteboard is thread-safe (Sendable, not main-actor), so read and write stay synchronous on the bridge queue
+    // and keep the order of the calls: a read after a write sees what was written.
+
+    func read(_ call: CAPPluginCall) throws {
         let result = implementation.read()
 
-        if !result.isEmpty {
-            call.resolve(result)
-        } else {
-            call.reject("There is no data on the clipboard")
+        guard !result.isEmpty else {
+            throw CAPPluginError("There is no data on the clipboard")
         }
+        call.resolve(result)
     }
 
-    func write(_ call: CAPPluginCall) {
+    func write(_ call: CAPPluginCall) throws {
         var result: Result<Void, Error>
 
         if let string = call.options["string"] as? String {
@@ -31,8 +33,7 @@ public class ClipboardPlugin: CAPPlugin, CAPBridgedPlugin {
         } else if let imageBase64 = call.options["image"] as? String {
             result = implementation.write(content: imageBase64, ofType: Clipboard.ContentType.image)
         } else {
-            call.reject("No content provided")
-            return
+            throw CAPPluginError("No content provided")
         }
 
         switch result {
@@ -40,7 +41,7 @@ public class ClipboardPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve()
         case .failure(let err):
             CAPLog.print(err.localizedDescription)
-            call.reject(err.localizedDescription)
+            throw CAPPluginError(err.localizedDescription, underlyingError: err)
         }
     }
 }
