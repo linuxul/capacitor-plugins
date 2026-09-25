@@ -3,7 +3,9 @@ package com.capacitorjs.plugins.textzoom
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PluginThread
 import com.getcapacitor.annotation.CapacitorPlugin
 
 @CapacitorPlugin(name = "TextZoom")
@@ -14,28 +16,19 @@ public class TextZoomPlugin : Plugin() {
         textZoom = TextZoom(bridge.activity, bridge.webView)
     }
 
-    @PluginMethod
+    // The web view's settings belong to the main thread
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun get(call: PluginCall) {
-        // The web view's settings belong to the main thread
-        bridge.executeOnMainThread {
-            val ret = JSObject()
-            ret.put("value", textZoom.get())
-            call.resolve(ret)
-        }
+        val ret = JSObject()
+        ret.put("value", textZoom.get())
+        call.resolve(ret)
     }
 
-    @PluginMethod
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun set(call: PluginCall) {
-        bridge.executeOnMainThread {
-            val value = call.getDouble("value")
-
-            if (value == null) {
-                call.reject("Invalid integer value.")
-            } else {
-                textZoom.set(value)
-                call.resolve()
-            }
-        }
+        val value = call.getDouble("value") ?: throw PluginException("Invalid integer value.")
+        textZoom.set(value)
+        call.resolve()
     }
 
     @PluginMethod
