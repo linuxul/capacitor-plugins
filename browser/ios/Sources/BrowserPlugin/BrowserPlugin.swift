@@ -7,12 +7,12 @@ public class CAPBrowserPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "CAPBrowserPlugin"
     public let jsName = "Browser"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "open", returnType: .promise),
-        CAPPluginMethod(name: "close", returnType: .promise)
+        .promise("open", CAPBrowserPlugin.open),
+        .promise("close", CAPBrowserPlugin.close)
     ]
     private let implementation = Browser()
 
-    @objc func open(_ call: CAPPluginCall) {
+    func open(_ call: CAPPluginCall) {
         // validate the URL
         guard let urlString = call.getString("url"), let url = URL(string: urlString) else {
             call.reject("Must provide a valid URL to open")
@@ -53,7 +53,7 @@ public class CAPBrowserPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func close(_ call: CAPPluginCall) {
+    func close(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
             guard let self, let viewController = self.implementation.viewController else {
                 call.reject("No active window to close!")
