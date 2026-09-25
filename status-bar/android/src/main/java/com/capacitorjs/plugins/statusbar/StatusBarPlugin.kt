@@ -58,13 +58,14 @@ public class StatusBarPlugin : Plugin() {
     @PluginMethod(thread = PluginThread.MAIN)
     public fun setBackgroundColor(call: PluginCall) {
         val color = call.getString("color") ?: throw PluginException("Color must be provided")
-        try {
-            val parsedColor = WebColor.parseColor(color.uppercase(Locale.ROOT))
-            implementation.setBackgroundColor(parsedColor)
-            call.resolve()
-        } catch (ex: IllegalArgumentException) {
-            call.reject("Invalid color provided. Must be a hex string (ex: #ff0000")
-        }
+        val parsedColor =
+            try {
+                WebColor.parseColor(color.uppercase(Locale.ROOT))
+            } catch (ex: IllegalArgumentException) {
+                throw PluginException("Invalid color provided. Must be a hex string (ex: #ff0000")
+            }
+        implementation.setBackgroundColor(parsedColor)
+        call.resolve()
     }
 
     @PluginMethod(thread = PluginThread.MAIN)
