@@ -117,8 +117,11 @@ public class AppPlugin : Plugin() {
             return
         }
 
-        callback.isEnabled = enabled
-        call.resolve()
+        // Enabling the callback registers it with the window's back dispatcher, which belongs to the main thread
+        bridge.executeOnMainThread {
+            callback.isEnabled = enabled
+            call.resolve()
+        }
     }
 
     @PluginMethod
