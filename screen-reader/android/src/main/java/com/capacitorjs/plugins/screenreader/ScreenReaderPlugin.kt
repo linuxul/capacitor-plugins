@@ -4,6 +4,7 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PluginThread
 import com.getcapacitor.annotation.CapacitorPlugin
 
 @CapacitorPlugin(name = "ScreenReader")
@@ -31,12 +32,12 @@ public class ScreenReaderPlugin : Plugin() {
         call.resolve(ret)
     }
 
-    @PluginMethod
+    // The text-to-speech engine is kept on the main thread, which is where it reports that it is ready
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun speak(call: PluginCall) {
         val value = call.getString("value")
         val language = call.getString("language") ?: "en"
-        // The text-to-speech engine is kept on the main thread, which is where it reports that it is ready
-        bridge.executeOnMainThread { screenReader.speak(value, language) }
+        screenReader.speak(value, language)
         call.resolve()
     }
 
