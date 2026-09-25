@@ -2,15 +2,6 @@ import { WebPlugin } from '@capacitor/core';
 
 import type { ClipboardPlugin, ReadResult, WriteOptions } from './definitions';
 
-declare global {
-  interface Clipboard {
-    read(): Promise<any>;
-    write(data: any[]): Promise<any>;
-  }
-}
-
-declare let ClipboardItem: any;
-
 export class ClipboardWeb extends WebPlugin implements ClipboardPlugin {
   async write(options: WriteOptions): Promise<void> {
     if (typeof navigator === 'undefined' || !navigator.clipboard) {
@@ -69,7 +60,7 @@ export class ClipboardWeb extends WebPlugin implements ClipboardPlugin {
 
   private async writeText(text: string) {
     if (typeof navigator === 'undefined' || !navigator.clipboard || !navigator.clipboard.writeText) {
-      throw this.unavailable('Writting to clipboard not supported in this browser');
+      throw this.unavailable('Writing to the clipboard is not supported in this browser');
     }
 
     await navigator.clipboard.writeText(text);
