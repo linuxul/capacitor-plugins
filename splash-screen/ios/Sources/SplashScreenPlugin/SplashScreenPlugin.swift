@@ -7,8 +7,8 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "SplashScreenPlugin"
     public let jsName = "SplashScreen"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "show", returnType: .promise),
-        CAPPluginMethod(name: "hide", returnType: .promise)
+        .promise("show", SplashScreenPlugin.show),
+        .promise("hide", SplashScreenPlugin.hide)
     ]
     private var splashScreen: SplashScreen?
 
@@ -20,7 +20,7 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     // Show the splash screen
-    @objc public func show(_ call: CAPPluginCall) {
+    public func show(_ call: CAPPluginCall) {
         if let splash = splashScreen {
             let settings = splashScreenSettings(from: call)
             splash.show(settings: settings,
@@ -34,7 +34,7 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     // Hide the splash screen
-    @objc public func hide(_ call: CAPPluginCall) {
+    public func hide(_ call: CAPPluginCall) {
         if let splash = splashScreen {
             let settings = splashScreenSettings(from: call)
             splash.hide(settings: settings)
