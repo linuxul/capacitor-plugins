@@ -7,31 +7,27 @@ public class AppLauncherPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "AppLauncherPlugin"
     public let jsName = "AppLauncher"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "canOpenUrl", returnType: .promise),
-        CAPPluginMethod(name: "openUrl", returnType: .promise)
+        .async("canOpenUrl", AppLauncherPlugin.canOpenUrl),
+        .promise("openUrl", AppLauncherPlugin.openUrl)
     ]
 
-    @objc func canOpenUrl(_ call: CAPPluginCall) {
+    /// UIApplication is UIKit: the method runs on the main actor, not the bridge queue.
+    @MainActor
+    func canOpenUrl(_ call: CAPPluginCall) async throws -> JSObject {
         guard let urlString = call.getString("url") else {
-            call.reject("Must supply a URL")
-            return
+            throw CAPPluginError("Must supply a URL")
         }
 
         guard let url = URL.init(string: urlString) else {
-            call.reject("Invalid URL")
-            return
+            throw CAPPluginError("Invalid URL")
         }
 
-        DispatchQueue.main.async {
-            let canOpen = UIApplication.shared.canOpenURL(url)
-
-            call.resolve([
-                "value": canOpen
-            ])
-        }
+        return [
+            "value": UIApplication.shared.canOpenURL(url)
+        ]
     }
 
-    @objc func openUrl(_ call: CAPPluginCall) {
+    func openUrl(_ call: CAPPluginCall) {
         guard let urlString = call.getString("url") else {
             call.reject("Must supply a URL")
             return
