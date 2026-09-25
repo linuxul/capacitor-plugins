@@ -7,8 +7,8 @@ public class ScreenReaderPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ScreenReaderPlugin"
     public let jsName = "ScreenReader"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "speak", returnType: .promise),
-        CAPPluginMethod(name: "isEnabled", returnType: .promise)
+        .promise("speak", ScreenReaderPlugin.speak),
+        .promise("isEnabled", ScreenReaderPlugin.isEnabled)
     ]
     static let stateChangeEvent = "stateChange"
 
@@ -23,7 +23,7 @@ public class ScreenReaderPlugin: CAPPlugin, CAPBridgedPlugin {
         NotificationCenter.default.removeObserver(self)
     }
 
-    @objc func isEnabled(_ call: CAPPluginCall) {
+    func isEnabled(_ call: CAPPluginCall) {
         let enabled = UIAccessibility.isVoiceOverRunning
 
         call.resolve([
@@ -31,7 +31,7 @@ public class ScreenReaderPlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
-    @objc func speak(_ call: CAPPluginCall) {
+    func speak(_ call: CAPPluginCall) {
         guard let value = call.getString("value") else {
             call.reject("No value provided")
             return
