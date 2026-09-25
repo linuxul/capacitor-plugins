@@ -4,7 +4,9 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Logger
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PluginThread
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONException
 import org.json.JSONObject
@@ -13,18 +15,14 @@ import org.json.JSONObject
 public class ActionSheetPlugin : Plugin() {
     private val implementation = ActionSheet()
 
-    @PluginMethod
+    // The sheet is a fragment, so it is set up and shown on the main thread
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun showActions(call: PluginCall) {
         val title = call.getString("title")
         val cancelable = call.getBoolean("cancelable", false) == true
-        val options = call.getArray("options")
-        if (options == null) {
-            call.reject("Must supply options")
-            return
-        }
+        val options = call.getArray("options") ?: throw PluginException("Must supply options")
         if (activity.isFinishing) {
-            call.reject("App is finishing")
-            return
+            throw PluginException("App is finishing")
         }
 
         val actionOptions =
@@ -38,25 +36,22 @@ public class ActionSheetPlugin : Plugin() {
                 return
             }
 
-        // Plugin methods run on the bridge thread. The sheet is a fragment, so set it up and show it on the main thread.
-        bridge.executeOnMainThread {
-            implementation.title = title
-            implementation.options = actionOptions.toTypedArray()
-            implementation.isCancelable = cancelable
-            if (cancelable) {
-                implementation.onCancelListener = ActionSheet.OnCancelListener { resolve(call, -1) }
+        implementation.title = title
+        implementation.options = actionOptions.toTypedArray()
+        implementation.isCancelable = cancelable
+        if (cancelable) {
+            implementation.onCancelListener = ActionSheet.OnCancelListener { resolve(call, -1) }
+        }
+        implementation.onSelectedListener =
+            ActionSheet.OnSelectListener { index ->
+                resolve(call, index)
+                implementation.dismiss()
             }
-            implementation.onSelectedListener =
-                ActionSheet.OnSelectListener { index ->
-                    resolve(call, index)
-                    implementation.dismiss()
-                }
-            try {
-                implementation.show(activity.supportFragmentManager, "capacitorModalsActionSheet")
-            } catch (ex: IllegalStateException) {
-                // The activity has already saved its state
-                call.reject("Unable to show the action sheet", ex = ex)
-            }
+        try {
+            implementation.show(activity.supportFragmentManager, "capacitorModalsActionSheet")
+        } catch (ex: IllegalStateException) {
+            // The activity has already saved its state
+            call.reject("Unable to show the action sheet", ex = ex)
         }
     }
 
