@@ -90,6 +90,19 @@ class ScreenOrientationTests: XCTestCase {
         XCTAssertEqual(implementation.fromDeviceOrientationToOrientationType(.faceUp), "portrait-primary")
     }
 
+    func testLockWithoutAnOrientationIsRejected() {
+        let call = CAPPluginCall(callbackId: "test", methodName: "lock", options: [:], success: { _, _ in
+            XCTFail("lock must not resolve")
+        }, error: { _ in
+            XCTFail("lock answers by throwing")
+        })
+        XCTAssertThrowsError(try ScreenOrientationPlugin().lock(call)) { error in
+            // The bridge rejects the call with this error.
+            XCTAssertEqual((error as? CAPPluginError)?.message, "Input option 'orientation' must be provided.")
+            XCTAssertNil((error as? CAPPluginError)?.code)
+        }
+    }
+
     @MainActor
     func testOrientationReturnsAType() async {
         // The bridge resolves the call with what the async method returns.

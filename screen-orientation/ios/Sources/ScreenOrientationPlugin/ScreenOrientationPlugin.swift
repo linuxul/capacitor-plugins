@@ -35,10 +35,13 @@ public class ScreenOrientationPlugin: CAPPlugin, CAPBridgedPlugin {
         return ["type": implementation.getCurrentOrientationType()]
     }
 
-    public func lock(_ call: CAPPluginCall) {
+    // lock and unlock stay synchronous: the bridge queue runs them in the order of the calls and the implementation
+    // hands the UIKit work to the main queue in that order, so a lock after an unlock wins. Async methods would not
+    // keep that order.
+
+    public func lock(_ call: CAPPluginCall) throws {
         guard let lockToOrientation = call.getString("orientation") else {
-            call.reject("Input option 'orientation' must be provided.")
-            return
+            throw CAPPluginError("Input option 'orientation' must be provided.")
         }
         implementation.lock(lockToOrientation) { error in
             if let error = error {
