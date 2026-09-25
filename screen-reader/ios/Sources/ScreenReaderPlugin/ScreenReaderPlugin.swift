@@ -8,7 +8,7 @@ public class ScreenReaderPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "ScreenReader"
     public let pluginMethods: [CAPPluginMethod] = [
         .promise("speak", ScreenReaderPlugin.speak),
-        .promise("isEnabled", ScreenReaderPlugin.isEnabled)
+        .async("isEnabled", ScreenReaderPlugin.isEnabled)
     ]
     static let stateChangeEvent = "stateChange"
 
@@ -23,22 +23,24 @@ public class ScreenReaderPlugin: CAPPlugin, CAPBridgedPlugin {
         NotificationCenter.default.removeObserver(self)
     }
 
-    func isEnabled(_ call: CAPPluginCall) {
-        let enabled = UIAccessibility.isVoiceOverRunning
-
-        call.resolve([
-            "value": enabled
-        ])
+    /// UIAccessibility is UIKit state: the method runs on the main actor, not the bridge queue.
+    @MainActor
+    func isEnabled(_ call: CAPPluginCall) async -> JSObject {
+        return [
+            "value": UIAccessibility.isVoiceOverRunning
+        ]
     }
 
-    func speak(_ call: CAPPluginCall) {
+    /// Stays synchronous so that announcements keep the order of the calls, which async methods do not. The
+    /// announcement is made on the main queue a moment later, as before, and VoiceOver is checked there: it used to be
+    /// read on the bridge queue.
+    func speak(_ call: CAPPluginCall) throws {
         guard let value = call.getString("value") else {
-            call.reject("No value provided")
-            return
+            throw CAPPluginError("No value provided")
         }
 
-        if UIAccessibility.isVoiceOverRunning {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if UIAccessibility.isVoiceOverRunning {
                 UIAccessibility.post(notification: .announcement, argument: value)
             }
         }
