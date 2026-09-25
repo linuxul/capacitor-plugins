@@ -18,27 +18,38 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
     private var observers: [NSObjectProtocol] = []
 
     override public func load() {
-        NotificationCenter.default.addObserver(self, selector: #selector(self.handleUrlOpened(notification:)), name: Notification.Name.capacitorOpenURL, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(self.handleUniversalLink(notification:)), name: Notification.Name.capacitorOpenUniversalLink, object: nil)
-        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: OperationQueue.main) { [weak self] (_) in
-            self?.notifyListeners("appStateChange", data: [
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(self.handleUrlOpened(notification:)), name: Notification.Name.capacitorOpenURL, object: nil)
+        center.addObserver(self,
+                           selector: #selector(self.handleUniversalLink(notification:)),
+                           name: Notification.Name.capacitorOpenUniversalLink,
+                           object: nil)
+        observe(UIApplication.didBecomeActiveNotification) { plugin in
+            plugin.notifyListeners("appStateChange", data: [
                 "isActive": true
             ])
-        })
-        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: OperationQueue.main) { [weak self] (_) in
-            self?.notifyListeners("appStateChange", data: [
+        }
+        observe(UIApplication.willResignActiveNotification) { plugin in
+            plugin.notifyListeners("appStateChange", data: [
                 "isActive": false
             ])
-        })
+        }
+        observe(UIApplication.didEnterBackgroundNotification) { plugin in
+            plugin.notifyListeners("pause", data: nil)
+        }
+        observe(UIApplication.willEnterForegroundNotification) { plugin in
+            plugin.notifyListeners("resume", data: nil)
+        }
+    }
 
-        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: OperationQueue.main) { [weak self] (_) in
-            self?.notifyListeners("pause", data: nil)
+    /// Runs `handler` on the main queue for every `name` notification while the plugin is alive.
+    private func observe(_ name: Notification.Name, _ handler: @escaping (AppPlugin) -> Void) {
+        observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: OperationQueue.main) { [weak self] (_) in
+            guard let self else {
+                return
+            }
+            handler(self)
         })
-
-        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: OperationQueue.main) { [weak self] (_) in
-            self?.notifyListeners("resume", data: nil)
-        })
-
     }
 
     deinit {
@@ -96,13 +107,20 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func getLaunchUrl(_ call: CAPPluginCall) {
-        if let lastUrl = ApplicationDelegateProxy.shared.lastURL {
-            let urlValue = lastUrl.absoluteString
-            call.resolve([
-                "url": urlValue
-            ])
+        // Settle once: with a launch URL the call used to resolve with it and then resolve again without data.
+        if let result = AppPlugin.launchUrlResult(ApplicationDelegateProxy.shared.lastURL) {
+            call.resolve(result)
+        } else {
+            call.resolve()
         }
-        call.resolve()
+    }
+
+    /// The result of `getLaunchUrl`: `{ url }` when the app was opened with a URL, nil (resolve with no data) otherwise.
+    static func launchUrlResult(_ url: URL?) -> JSObject? {
+        guard let url else {
+            return nil
+        }
+        return ["url": url.absoluteString]
     }
 
     @objc func getState(_ call: CAPPluginCall) {
@@ -119,7 +137,7 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func getAppLanguage(_ call: CAPPluginCall) {
         call.resolve([
-            "value": Bundle.main.preferredLocalizations.first
+            "value": Bundle.main.preferredLocalizations.first ?? ""
         ])
     }
 
