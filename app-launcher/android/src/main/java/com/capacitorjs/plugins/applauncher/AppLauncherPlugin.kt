@@ -37,7 +37,7 @@ public class AppLauncherPlugin : Plugin() {
     }
 
     private fun canResolve(pm: PackageManager, intent: Intent): Boolean =
-        pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null
+        pm.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())) != null
 
     @PluginMethod
     public fun openUrl(call: PluginCall) {
