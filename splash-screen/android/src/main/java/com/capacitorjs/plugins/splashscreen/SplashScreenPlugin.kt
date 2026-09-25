@@ -5,6 +5,7 @@ import com.getcapacitor.Logger
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PluginThread
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.util.WebColor
 import java.util.Locale
@@ -23,7 +24,8 @@ public class SplashScreenPlugin : Plugin() {
         splashScreen.showOnLaunch(activity)
     }
 
-    @PluginMethod
+    // The splash screen's views and state belong to the main thread
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun show(call: PluginCall) {
         splashScreen.show(
             activity,
@@ -40,7 +42,7 @@ public class SplashScreenPlugin : Plugin() {
         )
     }
 
-    @PluginMethod
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun hide(call: PluginCall) {
         if (splashScreenConfig.isUsingDialog) {
             splashScreen.hideDialog(activity)

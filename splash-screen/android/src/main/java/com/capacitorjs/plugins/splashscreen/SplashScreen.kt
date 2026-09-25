@@ -13,10 +13,12 @@ import android.graphics.drawable.Animatable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.LayerDrawable
 import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver.OnPreDrawListener
+import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
@@ -27,19 +29,23 @@ import android.widget.ProgressBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import com.getcapacitor.Logger
 
 /**
  * A Splash Screen service for showing and hiding a splash screen in the app.
+ *
+ * Call it on the main thread. Its state and its views belong to that thread: the plugin loads there, its show and hide
+ * methods run there, and so do the lifecycle callbacks, the animations and the delayed hides.
  */
 public class SplashScreen internal constructor(private val context: Context, private val config: SplashScreenConfig) {
+    private val state = SplashState { Looper.getMainLooper().isCurrentThread }
+
+    // Runs the delayed hides, and adds the launch splash once the activity has started
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var dialog: Dialog? = null
     private var splashImage: View? = null
     private var spinnerBar: ProgressBar? = null
     private var windowManager: WindowManager? = null
-    private var isVisible = false
-    private var isHiding = false
     private var content: View? = null
     private var onPreDrawListener: OnPreDrawListener? = null
 
@@ -68,7 +74,9 @@ public class SplashScreen internal constructor(private val context: Context, pri
         if (config.isUsingDialog) {
             showDialog(activity, settings, null, true)
         } else {
-            show(activity, settings, null, true)
+            // The plugin loads while the activity is being created. The splash window is added on the next turn of
+            // the main loop, once the activity has started, as it always was.
+            mainHandler.post { show(activity, settings, null, true) }
         }
     }
 
@@ -80,66 +88,64 @@ public class SplashScreen internal constructor(private val context: Context, pri
     private fun showWithAndroid12API(activity: AppCompatActivity, settings: SplashScreenSettings) {
         if (activity.isFinishing) return
 
-        activity.runOnUiThread {
-            val windowSplashScreen = activity.installSplashScreen()
-            windowSplashScreen.setKeepOnScreenCondition { isVisible || isHiding }
+        val windowSplashScreen = activity.installSplashScreen()
+        windowSplashScreen.setKeepOnScreenCondition { state.keepsLaunchSplash }
 
-            if (config.launchFadeOutDuration > 0) {
-                // Set Fade Out Animation
-                windowSplashScreen.setOnExitAnimationListener { windowSplashScreenView ->
-                    val fadeAnimator = ObjectAnimator.ofFloat(windowSplashScreenView.view, View.ALPHA, 1f, 0f)
-                    fadeAnimator.interpolator = LinearInterpolator()
-                    fadeAnimator.duration = config.launchFadeOutDuration.toLong()
+        if (config.launchFadeOutDuration > 0) {
+            // Set Fade Out Animation
+            windowSplashScreen.setOnExitAnimationListener { windowSplashScreenView ->
+                val fadeAnimator = ObjectAnimator.ofFloat(windowSplashScreenView.view, View.ALPHA, 1f, 0f)
+                fadeAnimator.interpolator = LinearInterpolator()
+                fadeAnimator.duration = config.launchFadeOutDuration.toLong()
 
-                    fadeAnimator.addListener(
-                        object : AnimatorListenerAdapter() {
-                            override fun onAnimationEnd(animation: Animator) {
-                                isHiding = false
-                                windowSplashScreenView.remove()
-                                activity.splashScreen.clearOnExitAnimationListener()
-                            }
+                fadeAnimator.addListener(
+                    object : AnimatorListenerAdapter() {
+                        override fun onAnimationEnd(animation: Animator) {
+                            state.isHiding = false
+                            windowSplashScreenView.remove()
+                            activity.splashScreen.clearOnExitAnimationListener()
                         }
-                    )
+                    }
+                )
 
-                    fadeAnimator.start()
+                fadeAnimator.start()
 
-                    isHiding = true
-                    isVisible = false
+                state.isHiding = true
+                state.isVisible = false
+            }
+        }
+
+        // Set Pre Draw Listener & Delay Drawing Until Duration Elapses
+        val content = activity.findViewById<View>(android.R.id.content)
+        this.content = content
+
+        val listener =
+            object : OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    // Start Timer On First Run
+                    if (!state.isVisible && !state.isHiding) {
+                        state.isVisible = true
+
+                        mainHandler.postDelayed(
+                            {
+                                // Splash screen is done... start drawing content.
+                                if (settings.autoHide) {
+                                    state.isVisible = false
+                                    onPreDrawListener = null
+                                    content.viewTreeObserver.removeOnPreDrawListener(this)
+                                }
+                            },
+                            settings.showDuration.toLong()
+                        )
+                    }
+
+                    // Not ready to dismiss splash screen
+                    return false
                 }
             }
+        onPreDrawListener = listener
 
-            // Set Pre Draw Listener & Delay Drawing Until Duration Elapses
-            val content = activity.findViewById<View>(android.R.id.content)
-            this.content = content
-
-            val listener =
-                object : OnPreDrawListener {
-                    override fun onPreDraw(): Boolean {
-                        // Start Timer On First Run
-                        if (!isVisible && !isHiding) {
-                            isVisible = true
-
-                            Handler(context.mainLooper).postDelayed(
-                                {
-                                    // Splash screen is done... start drawing content.
-                                    if (settings.autoHide) {
-                                        isVisible = false
-                                        onPreDrawListener = null
-                                        content.viewTreeObserver.removeOnPreDrawListener(this)
-                                    }
-                                },
-                                settings.showDuration.toLong()
-                            )
-                        }
-
-                        // Not ready to dismiss splash screen
-                        return false
-                    }
-                }
-            onPreDrawListener = listener
-
-            content.viewTreeObserver.addOnPreDrawListener(listener)
-        }
+        content.viewTreeObserver.addOnPreDrawListener(listener)
     }
 
     /**
@@ -162,56 +168,57 @@ public class SplashScreen internal constructor(private val context: Context, pri
         splashListener: SplashListener?,
         isLaunchSplash: Boolean
     ) {
-        if (activity.isFinishing) return
+        if (activity.isFinishing) {
+            splashListener?.error()
+            return
+        }
 
-        if (isVisible) {
+        if (state.isVisible) {
             splashListener?.completed()
             return
         }
 
-        activity.runOnUiThread {
-            val style =
-                when {
-                    config.isImmersive -> R.style.capacitor_immersive_style
-                    config.isFullScreen -> R.style.capacitor_full_screen_style
-                    else -> R.style.capacitor_default_style
-                }
-            val dialog = Dialog(activity, style)
-            this.dialog = dialog
-
-            val splashId = getSplashLayoutId("Layout not found, using default")
-            if (splashId != 0) {
-                dialog.setContentView(splashId)
-            } else {
-                val splash = getSplashDrawable()
-                val parent = LinearLayout(context)
-                parent.layoutParams =
-                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                parent.orientation = LinearLayout.VERTICAL
-                if (splash != null) {
-                    parent.background = splash
-                }
-                dialog.setContentView(parent)
+        val style =
+            when {
+                config.isImmersive -> R.style.capacitor_immersive_style
+                config.isFullScreen -> R.style.capacitor_full_screen_style
+                else -> R.style.capacitor_default_style
             }
+        val dialog = Dialog(activity, style)
+        this.dialog = dialog
 
-            dialog.setCancelable(false)
-            if (!dialog.isShowing) {
-                dialog.show()
+        val splashId = getSplashLayoutId("Layout not found, using default")
+        if (splashId != 0) {
+            dialog.setContentView(splashId)
+        } else {
+            val splash = getSplashDrawable()
+            val parent = LinearLayout(context)
+            parent.layoutParams =
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            parent.orientation = LinearLayout.VERTICAL
+            if (splash != null) {
+                parent.background = splash
             }
-            isVisible = true
+            dialog.setContentView(parent)
+        }
 
-            if (settings.autoHide) {
-                Handler(context.mainLooper).postDelayed(
-                    {
-                        hideDialog(activity, isLaunchSplash)
-                        splashListener?.completed()
-                    },
-                    settings.showDuration.toLong()
-                )
-            } else {
-                // If no autoHide, call complete
-                splashListener?.completed()
-            }
+        dialog.setCancelable(false)
+        if (!dialog.isShowing) {
+            dialog.show()
+        }
+        state.isVisible = true
+
+        if (settings.autoHide) {
+            mainHandler.postDelayed(
+                {
+                    hideDialog(activity, isLaunchSplash)
+                    splashListener?.completed()
+                },
+                settings.showDuration.toLong()
+            )
+        } else {
+            // If no autoHide, call complete
+            splashListener?.completed()
         }
     }
 
@@ -338,12 +345,14 @@ public class SplashScreen internal constructor(private val context: Context, pri
         this.windowManager = windowManager
 
         if (activity.isFinishing) {
+            splashListener?.error()
             return
         }
 
         buildViews()
 
-        if (isVisible) {
+        // Already on screen, or fading in for an earlier show
+        if (state.isVisible || splashImage?.parent != null) {
             splashListener?.completed()
             return
         }
@@ -351,10 +360,10 @@ public class SplashScreen internal constructor(private val context: Context, pri
         val listener =
             object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animator: Animator) {
-                    isVisible = true
+                    state.isVisible = true
 
                     if (settings.autoHide) {
-                        Handler(context.mainLooper).postDelayed(
+                        mainHandler.postDelayed(
                             {
                                 hide(settings.fadeOutDuration, isLaunchSplash)
                                 splashListener?.completed()
@@ -368,83 +377,82 @@ public class SplashScreen internal constructor(private val context: Context, pri
                 }
             }
 
-        Handler(context.mainLooper).post {
-            val params = WindowManager.LayoutParams()
-            params.gravity = Gravity.CENTER
-            params.flags = activity.window.attributes.flags
+        val params = WindowManager.LayoutParams()
+        params.gravity = Gravity.CENTER
+        params.flags = activity.window.attributes.flags
 
-            // Required to enable the view to actually fade
-            params.format = PixelFormat.TRANSLUCENT
+        // Required to enable the view to actually fade
+        params.format = PixelFormat.TRANSLUCENT
 
-            // Without a splash drawable there is no view. The Java original handed null to the window manager, which
-            // refused it with an IllegalArgumentException.
-            val splashImage = splashImage
-            if (splashImage == null) {
-                Logger.debug("Could not add splash view")
-                return@post
+        // Without a splash drawable there is no view. The Java original handed null to the window manager, which
+        // refused it with an IllegalArgumentException.
+        val splashImage = splashImage
+        if (splashImage == null) {
+            Logger.debug("Could not add splash view")
+            splashListener?.error()
+            return
+        }
+
+        try {
+            windowManager.addView(splashImage, params)
+        } catch (ex: IllegalStateException) {
+            Logger.debug("Could not add splash view")
+            splashListener?.error()
+            return
+        } catch (ex: IllegalArgumentException) {
+            Logger.debug("Could not add splash view")
+            splashListener?.error()
+            return
+        }
+
+        // The view's controller is the platform's, which takes the platform's inset types. The bars hidden are those of
+        // WindowInsetsCompat.Type.systemBars(), which was passed here before: status, navigation and caption bars.
+        if (config.isImmersive) {
+            WindowCompat.setDecorFitsSystemWindows(activity.window, false)
+            val controller = splashImage.windowInsetsController
+            controller?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars() or WindowInsets.Type.captionBar())
+            controller?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else if (config.isFullScreen) {
+            WindowCompat.setDecorFitsSystemWindows(activity.window, false)
+            splashImage.windowInsetsController?.hide(WindowInsets.Type.statusBars())
+        }
+
+        splashImage.alpha = 0f
+
+        splashImage
+            .animate()
+            .alpha(1f)
+            .setInterpolator(LinearInterpolator())
+            .setDuration(settings.fadeInDuration.toLong())
+            .setListener(listener)
+            .start()
+
+        splashImage.visibility = View.VISIBLE
+
+        val spinnerBar = spinnerBar
+        if (spinnerBar != null) {
+            spinnerBar.visibility = View.INVISIBLE
+
+            if (spinnerBar.parent != null) {
+                windowManager.removeView(spinnerBar)
             }
 
-            try {
-                windowManager.addView(splashImage, params)
-            } catch (ex: IllegalStateException) {
-                Logger.debug("Could not add splash view")
-                return@post
-            } catch (ex: IllegalArgumentException) {
-                Logger.debug("Could not add splash view")
-                return@post
-            }
+            params.height = WindowManager.LayoutParams.WRAP_CONTENT
+            params.width = WindowManager.LayoutParams.WRAP_CONTENT
 
-            if (config.isImmersive) {
-                activity.runOnUiThread {
-                    WindowCompat.setDecorFitsSystemWindows(activity.window, false)
-                    val controller = splashImage.windowInsetsController
-                    controller?.hide(WindowInsetsCompat.Type.systemBars())
-                    controller?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                }
-            } else if (config.isFullScreen) {
-                activity.runOnUiThread {
-                    WindowCompat.setDecorFitsSystemWindows(activity.window, false)
-                    splashImage.windowInsetsController?.hide(WindowInsetsCompat.Type.statusBars())
-                }
-            }
+            windowManager.addView(spinnerBar, params)
 
-            splashImage.alpha = 0f
+            if (config.showSpinner) {
+                spinnerBar.alpha = 0f
 
-            splashImage
-                .animate()
-                .alpha(1f)
-                .setInterpolator(LinearInterpolator())
-                .setDuration(settings.fadeInDuration.toLong())
-                .setListener(listener)
-                .start()
+                spinnerBar
+                    .animate()
+                    .alpha(1f)
+                    .setInterpolator(LinearInterpolator())
+                    .setDuration(settings.fadeInDuration.toLong())
+                    .start()
 
-            splashImage.visibility = View.VISIBLE
-
-            val spinnerBar = spinnerBar
-            if (spinnerBar != null) {
-                spinnerBar.visibility = View.INVISIBLE
-
-                if (spinnerBar.parent != null) {
-                    windowManager.removeView(spinnerBar)
-                }
-
-                params.height = WindowManager.LayoutParams.WRAP_CONTENT
-                params.width = WindowManager.LayoutParams.WRAP_CONTENT
-
-                windowManager.addView(spinnerBar, params)
-
-                if (config.showSpinner) {
-                    spinnerBar.alpha = 0f
-
-                    spinnerBar
-                        .animate()
-                        .alpha(1f)
-                        .setInterpolator(LinearInterpolator())
-                        .setDuration(settings.fadeInDuration.toLong())
-                        .start()
-
-                    spinnerBar.visibility = View.VISIBLE
-                }
+                spinnerBar.visibility = View.VISIBLE
             }
         }
     }
@@ -456,7 +464,7 @@ public class SplashScreen internal constructor(private val context: Context, pri
      */
     private fun hideAndroid12Splash(): Boolean {
         val listener = onPreDrawListener ?: return false
-        isVisible = false
+        state.isVisible = false
         content?.viewTreeObserver?.removeOnPreDrawListener(listener)
         onPreDrawListener = null
         return true
@@ -465,7 +473,7 @@ public class SplashScreen internal constructor(private val context: Context, pri
     private fun warnAboutAutomaticHide(isLaunchSplash: Boolean) {
         // Warn the user if the splash was hidden automatically, which means they could be experiencing an app
         // that feels slower than it actually is.
-        if (isLaunchSplash && isVisible) {
+        if (isLaunchSplash && state.isVisible) {
             Logger.debug(
                 "SplashScreen was automatically hidden after the launch timeout. " +
                     "You should call `SplashScreen.hide()` as soon as your web app is loaded (or increase the timeout)." +
@@ -477,7 +485,7 @@ public class SplashScreen internal constructor(private val context: Context, pri
     private fun hide(fadeOutDuration: Int, isLaunchSplash: Boolean) {
         warnAboutAutomaticHide(isLaunchSplash)
 
-        if (isHiding) {
+        if (state.isHiding) {
             return
         }
 
@@ -497,7 +505,7 @@ public class SplashScreen internal constructor(private val context: Context, pri
             return
         }
 
-        isHiding = true
+        state.isHiding = true
 
         val listener =
             object : AnimatorListenerAdapter() {
@@ -510,34 +518,32 @@ public class SplashScreen internal constructor(private val context: Context, pri
                 }
             }
 
-        Handler(context.mainLooper).post {
-            spinnerBar?.let { spinnerBar ->
-                spinnerBar.alpha = 1f
+        spinnerBar?.let { spinnerBar ->
+            spinnerBar.alpha = 1f
 
-                spinnerBar
-                    .animate()
-                    .alpha(0f)
-                    .setInterpolator(LinearInterpolator())
-                    .setDuration(fadeOutDuration.toLong())
-                    .start()
-            }
-
-            splashImage.alpha = 1f
-
-            splashImage
+            spinnerBar
                 .animate()
                 .alpha(0f)
                 .setInterpolator(LinearInterpolator())
                 .setDuration(fadeOutDuration.toLong())
-                .setListener(listener)
                 .start()
         }
+
+        splashImage.alpha = 1f
+
+        splashImage
+            .animate()
+            .alpha(0f)
+            .setInterpolator(LinearInterpolator())
+            .setDuration(fadeOutDuration.toLong())
+            .setListener(listener)
+            .start()
     }
 
     private fun hideDialog(activity: AppCompatActivity, isLaunchSplash: Boolean) {
         warnAboutAutomaticHide(isLaunchSplash)
 
-        if (isHiding) {
+        if (state.isHiding) {
             return
         }
 
@@ -546,18 +552,15 @@ public class SplashScreen internal constructor(private val context: Context, pri
             return
         }
 
-        isHiding = true
-
-        activity.runOnUiThread {
-            val dialog = dialog
-            if (dialog != null && dialog.isShowing) {
-                if (!activity.isFinishing && !activity.isDestroyed) {
-                    dialog.dismiss()
-                }
-                this.dialog = null
-                isHiding = false
-                isVisible = false
+        // Dismissing is done right here, so the dialog is never left "hiding". Marking it so while nothing was showing
+        // used to make every later hide return early.
+        val dialog = dialog
+        if (dialog != null && dialog.isShowing) {
+            if (!activity.isFinishing && !activity.isDestroyed) {
+                dialog.dismiss()
             }
+            this.dialog = null
+            state.hidden()
         }
     }
 
@@ -582,7 +585,6 @@ public class SplashScreen internal constructor(private val context: Context, pri
             // Exit fullscreen mode
             WindowCompat.setDecorFitsSystemWindows((context as Activity).window, true)
         }
-        isHiding = false
-        isVisible = false
+        state.hidden()
     }
 }
