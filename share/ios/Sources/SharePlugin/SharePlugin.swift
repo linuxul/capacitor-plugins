@@ -8,8 +8,17 @@ public class SharePlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "Share"
     public let pluginMethods: [CAPPluginMethod] = [
         .promise("canShare", SharePlugin.canShare),
-        .promise("share", SharePlugin.share)
+        .async("share", SharePlugin.share)
     ]
+
+    static let noPresenterMessage = "Unable to display the share sheet: there is no view controller to present it from"
+
+    /// How a share sheet closed.
+    enum Outcome {
+        case completed(activityType: String)
+        case canceled
+        case failed(Error)
+    }
 
     func canShare(_ call: CAPPluginCall) {
         call.resolve([
@@ -17,29 +26,48 @@ public class SharePlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
-    func share(_ call: CAPPluginCall) {
+    /// The share sheet is UIKit: the method runs on the main actor and returns `{ activityType }` when the sheet closes
+    /// after sharing. A sheet closed without sharing rejects with "Share canceled".
+    @MainActor
+    func share(_ call: CAPPluginCall) async throws -> JSObject {
         let items = SharePlugin.activityItems(from: call)
         if items.count == 0 {
-            call.reject("Must provide at least url, text or files")
-            return
+            throw CAPPluginError("Must provide at least url, text or files")
         }
         let title = call.getString("title")
 
-        DispatchQueue.main.async { [weak self] in
-            let root = self?.bridge?.viewController
-            // A share is only in progress when a share sheet is already presented.
-            if SharePlugin.isSharing(over: root) {
-                call.reject("Can't share while sharing is in progress")
-                return
-            }
-            // Present from the topmost presented view controller so the share sheet appears
-            // above any view controller the app has presented over the webview. With nothing
-            // presented this resolves to the bridge view controller, i.e. unchanged behaviour.
-            guard let presenter = SharePlugin.topmostPresenter(from: root) else {
-                call.reject("Unable to display the share sheet: there is no view controller to present it from")
-                return
-            }
+        let root = bridge?.viewController
+        // A share is only in progress when a share sheet is already presented.
+        if SharePlugin.isSharing(over: root) {
+            throw CAPPluginError("Can't share while sharing is in progress")
+        }
+        // Present from the topmost presented view controller so the share sheet appears
+        // above any view controller the app has presented over the webview. With nothing
+        // presented this resolves to the bridge view controller, i.e. unchanged behaviour.
+        guard let presenter = SharePlugin.topmostPresenter(from: root) else {
+            throw CAPPluginError(SharePlugin.noPresenterMessage)
+        }
 
+        switch try await SharePlugin.presentSheet(sharing: items, title: title, from: presenter) {
+        case .completed(let activityType):
+            return ["activityType": activityType]
+        case .canceled:
+            throw CAPPluginError("Share canceled")
+        case .failed(let error):
+            throw CAPPluginError("Error sharing item", underlyingError: error)
+        }
+    }
+
+    /// Presents a share sheet for `items` from `presenter` and returns how it closed: the first report of its
+    /// completion handler, or `.canceled` when the sheet is released without one (the sheet holds the handler, so it
+    /// can no longer report, for example after the app dismissed it). Throws when UIKit refuses the presentation (it
+    /// logs and does nothing when the presenter is mid-transition or not in a window), which used to leave the call
+    /// pending.
+    @MainActor
+    static func presentSheet(sharing items: [Any], title: String?, from presenter: UIViewController) async throws -> Outcome {
+        var refused = false
+        let outcome = await withCheckedContinuation { (continuation: CheckedContinuation<Outcome, Never>) in
+            let answer = OnceContinuation(continuation, fallback: Outcome.canceled)
             let actionController = UIActivityViewController(activityItems: items, applicationActivities: nil)
 
             if title != nil {
@@ -47,19 +75,13 @@ public class SharePlugin: CAPPlugin, CAPBridgedPlugin {
             }
 
             actionController.completionWithItemsHandler = { (activityType, completed, _ returnedItems, activityError) in
-                if activityError != nil {
-                    call.reject("Error sharing item", nil, activityError)
-                    return
-                }
-
-                if completed {
-                    call.resolve([
-                        "activityType": activityType?.rawValue ?? ""
-                    ])
+                if let activityError {
+                    answer.resume(returning: .failed(activityError))
+                } else if completed {
+                    answer.resume(returning: .completed(activityType: activityType?.rawValue ?? ""))
                 } else {
-                    call.reject("Share canceled")
+                    answer.resume(returning: .canceled)
                 }
-
             }
             // `setCenteredPopover` anchors to the bridge view controller's view, which is not in
             // the presenter's hierarchy when presenting from a different view controller. Anchor
@@ -71,7 +93,16 @@ public class SharePlugin: CAPPlugin, CAPBridgedPlugin {
                 popover.permittedArrowDirections = []
             }
             presenter.present(actionController, animated: true, completion: nil)
+            // UIKit sets presentedViewController as soon as it accepts a presentation.
+            if presenter.presentedViewController !== actionController {
+                refused = true
+                answer.resume(returning: .canceled)
+            }
         }
+        if refused {
+            throw CAPPluginError(noPresenterMessage)
+        }
+        return outcome
     }
 
     /// The items to share: the text, the URL and every file URL the call carries.
