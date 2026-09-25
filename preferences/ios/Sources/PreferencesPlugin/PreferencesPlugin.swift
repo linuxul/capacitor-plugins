@@ -6,18 +6,18 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "PreferencesPlugin"
     public let jsName = "Preferences"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "configure", returnType: .promise),
-        CAPPluginMethod(name: "get", returnType: .promise),
-        CAPPluginMethod(name: "set", returnType: .promise),
-        CAPPluginMethod(name: "remove", returnType: .promise),
-        CAPPluginMethod(name: "keys", returnType: .promise),
-        CAPPluginMethod(name: "clear", returnType: .promise),
-        CAPPluginMethod(name: "migrate", returnType: .promise),
-        CAPPluginMethod(name: "removeOld", returnType: .promise)
+        .promise("configure", PreferencesPlugin.configure),
+        .promise("get", PreferencesPlugin.get),
+        .promise("set", PreferencesPlugin.set),
+        .promise("remove", PreferencesPlugin.remove),
+        .promise("keys", PreferencesPlugin.keys),
+        .promise("clear", PreferencesPlugin.clear),
+        .promise("migrate", PreferencesPlugin.migrate),
+        .promise("removeOld", PreferencesPlugin.removeOld)
     ]
     private var preferences = Preferences(with: PreferencesConfiguration())
 
-    @objc func configure(_ call: CAPPluginCall) {
+    func configure(_ call: CAPPluginCall) {
         let group = call.getString("group")
         let configuration: PreferencesConfiguration
 
@@ -35,7 +35,7 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
-    @objc func get(_ call: CAPPluginCall) {
+    func get(_ call: CAPPluginCall) {
         guard let key = call.getString("key") else {
             call.reject("Must provide a key")
             return
@@ -48,7 +48,7 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
-    @objc func set(_ call: CAPPluginCall) {
+    func set(_ call: CAPPluginCall) {
         guard let key = call.getString("key") else {
             call.reject("Must provide a key")
             return
@@ -59,7 +59,7 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
-    @objc func remove(_ call: CAPPluginCall) {
+    func remove(_ call: CAPPluginCall) {
         guard let key = call.getString("key") else {
             call.reject("Must provide a key")
             return
@@ -69,7 +69,7 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
-    @objc func keys(_ call: CAPPluginCall) {
+    func keys(_ call: CAPPluginCall) {
         let keys = preferences.keys()
 
         call.resolve([
@@ -77,12 +77,12 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
-    @objc func clear(_ call: CAPPluginCall) {
+    func clear(_ call: CAPPluginCall) {
         preferences.removeAll()
         call.resolve()
     }
 
-    @objc func migrate(_ call: CAPPluginCall) {
+    func migrate(_ call: CAPPluginCall) {
         var migrated: [String] = []
         var existing: [String] = []
         let oldPrefix = "_cap_"
@@ -107,7 +107,7 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
-    @objc func removeOld(_ call: CAPPluginCall) {
+    func removeOld(_ call: CAPPluginCall) {
         let oldPrefix = "_cap_"
         let oldKeys = UserDefaults.standard.dictionaryRepresentation().keys.filter { $0.hasPrefix(oldPrefix) }
         for oldKey in oldKeys {
