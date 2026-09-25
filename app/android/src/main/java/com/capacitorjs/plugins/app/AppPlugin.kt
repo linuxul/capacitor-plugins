@@ -74,10 +74,10 @@ public class AppPlugin : Plugin() {
             data.put("id", packageInfo.packageName)
             data.put("build", packageInfo.longVersionCode.toInt().toString())
             data.put("version", packageInfo.versionName)
-            call.resolve(data)
         } catch (ex: Exception) {
-            call.reject("Unable to get App Info")
+            throw PluginException("Unable to get App Info", cause = ex)
         }
+        call.resolve(data)
     }
 
     @PluginMethod
