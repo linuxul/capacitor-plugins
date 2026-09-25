@@ -5,6 +5,7 @@ import com.getcapacitor.JSObject
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import java.util.TimeZone
 
 public class LocalNotificationSchedule() {
@@ -40,9 +41,7 @@ public class LocalNotificationSchedule() {
         repeats = schedule.getBool("repeats")
         val dateString = schedule.getString("at")
         if (dateString != null) {
-            val sdf = SimpleDateFormat(JS_DATE_FORMAT)
-            sdf.timeZone = TimeZone.getTimeZone("UTC")
-            at = sdf.parse(dateString)
+            at = parseJsDate(dateString)
         }
     }
 
@@ -113,5 +112,16 @@ public class LocalNotificationSchedule() {
 
     public companion object {
         public const val JS_DATE_FORMAT: String = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+
+        /**
+         * Reads a date that JavaScript wrote with `Date.toISOString()`. Without an explicit locale the default one
+         * chose the calendar, so that on a Thai device 2026 was read as a year of the Buddhist era, 543 years earlier.
+         */
+        @Throws(ParseException::class)
+        internal fun parseJsDate(value: String): Date {
+            val sdf = SimpleDateFormat(JS_DATE_FORMAT, Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            return sdf.parse(value) ?: throw ParseException("Unparseable date: \"$value\"", 0)
+        }
     }
 }

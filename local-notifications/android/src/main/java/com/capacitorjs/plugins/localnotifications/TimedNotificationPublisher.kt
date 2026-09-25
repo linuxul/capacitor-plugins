@@ -10,6 +10,7 @@ import android.content.Intent
 import com.getcapacitor.Logger
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 /**
  * Class used to create notification from timer event
@@ -63,7 +64,7 @@ public class TimedNotificationPublisher : BroadcastReceiver() {
         } else {
             alarmManager.setExact(AlarmManager.RTC, trigger, pendingIntent)
         }
-        val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm:ss")
+        val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.US)
         Logger.debug(Logger.tags("LN"), "notification " + id + " will next fire at " + sdf.format(Date(trigger)))
         return true
     }

@@ -23,6 +23,7 @@ import com.getcapacitor.PluginConfig
 import com.getcapacitor.plugin.util.AssetUtil
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -110,18 +111,49 @@ public class LocalNotificationManager(
             call?.reject("Notifications not enabled on this device")
             return null
         }
+        // Check every notification before scheduling any. Rejecting halfway through used to leave the notifications
+        // before the bad one scheduled, and the plugin then resolved the rejected call too. Without a call, when the
+        // notifications are restored after a reboot, a bad one is skipped and the others are still scheduled.
+        val valid = ArrayList<LocalNotification>(localNotifications.size)
         for (localNotification in localNotifications) {
-            val id = localNotification.id
-            if (id == null) {
-                call?.reject("LocalNotification missing identifier")
+            val error = checkNotification(localNotification)
+            if (error == null) {
+                valid.add(localNotification)
+            } else if (call != null) {
+                call.reject(error)
                 return null
+            } else {
+                Logger.error(Logger.tags("LN"), "Not scheduling notification ${localNotification.id}: $error", null)
             }
+        }
+        for (localNotification in valid) {
+            val id = checkNotNull(localNotification.id)
             dismissVisibleNotification(id)
             cancelTimerForNotification(id)
-            buildNotification(notificationManager, localNotification, id, call)
+            buildNotification(notificationManager, localNotification, id)
             ids.put(id)
         }
         return ids
+    }
+
+    /**
+     * Why [localNotification] cannot be scheduled, or null when it can
+     */
+    private fun checkNotification(localNotification: LocalNotification): String? {
+        val iconColor = getIconColor(localNotification)
+        return when {
+            localNotification.id == null -> "LocalNotification missing identifier"
+            iconColor != null && parseIconColor(iconColor) == null -> "Invalid color provided. Must be a hex string (ex: #ff0000"
+            else -> null
+        }
+    }
+
+    private fun getIconColor(localNotification: LocalNotification): String? = localNotification.getIconColor(config.getString("iconColor"))
+
+    private fun parseIconColor(color: String): Int? = try {
+        Color.parseColor(color)
+    } catch (ex: IllegalArgumentException) {
+        null
     }
 
     // TODO Progressbar support
@@ -132,12 +164,7 @@ public class LocalNotificationManager(
     // TODO expandable notification NotificationCompat.MessagingStyle
     // TODO media style notification support NotificationCompat.MediaStyle
     // TODO custom small/large icons
-    private fun buildNotification(
-        notificationManager: NotificationManagerCompat,
-        localNotification: LocalNotification,
-        id: Int,
-        call: PluginCall?
-    ) {
+    private fun buildNotification(notificationManager: NotificationManagerCompat, localNotification: LocalNotification, id: Int) {
         val channelId = localNotification.channelId ?: DEFAULT_NOTIFICATION_CHANNEL_ID
         val mBuilder =
             NotificationCompat
@@ -194,14 +221,10 @@ public class LocalNotificationManager(
         mBuilder.setSmallIcon(localNotification.getSmallIcon(context, getDefaultSmallIcon(context)))
         mBuilder.setLargeIcon(localNotification.getLargeIcon(context))
 
-        val iconColor = localNotification.getIconColor(config.getString("iconColor"))
+        // schedule has checked that the color parses
+        val iconColor = getIconColor(localNotification)?.let { parseIconColor(it) }
         if (iconColor != null) {
-            try {
-                mBuilder.setColor(Color.parseColor(iconColor))
-            } catch (ex: IllegalArgumentException) {
-                call?.reject("Invalid color provided. Must be a hex string (ex: #ff0000")
-                return
-            }
+            mBuilder.setColor(iconColor)
         }
 
         createActionIntents(localNotification, id, mBuilder)
@@ -324,7 +347,7 @@ public class LocalNotificationManager(
             notificationIntent.putExtra(TimedNotificationPublisher.CRON_KEY, on.toMatchString())
             pendingIntent = PendingIntent.getBroadcast(context, id, notificationIntent, flags)
             setExactIfPossible(alarmManager, schedule, trigger, pendingIntent)
-            val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm:ss")
+            val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.US)
             Logger.debug(Logger.tags("LN"), "notification " + id + " will next fire at " + sdf.format(Date(trigger)))
         }
     }

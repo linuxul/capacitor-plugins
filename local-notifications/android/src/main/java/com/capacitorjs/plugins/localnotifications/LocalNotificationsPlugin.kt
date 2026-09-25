@@ -43,6 +43,13 @@ public class LocalNotificationsPlugin : Plugin() {
         staticBridge = bridge
     }
 
+    override fun handleOnDestroy() {
+        // The receivers reach the plugin through the bridge. Keeping it would keep the destroyed activity as well.
+        if (staticBridge === bridge) {
+            staticBridge = null
+        }
+    }
+
     override fun handleOnNewIntent(intent: Intent?) {
         super.handleOnNewIntent(intent)
         if (intent == null || Intent.ACTION_MAIN != intent.action) {
@@ -155,13 +162,14 @@ public class LocalNotificationsPlugin : Plugin() {
             return
         }
 
+        var hasInvalidEntry = false
         try {
             for (o in notifications.toList<Any>()) {
                 val notif = if (o is JSONObject) JSObject.fromJSONObject(o) else null
                 val id = notif?.getInteger("id")
                 if (notif == null || id == null) {
                     // A notification without an id used to end in a NullPointerException
-                    call.reject("Expected notifications to be a list of notification objects")
+                    hasInvalidEntry = true
                     continue
                 }
 
@@ -173,10 +181,16 @@ public class LocalNotificationsPlugin : Plugin() {
                 }
             }
         } catch (e: JSONException) {
-            call.reject(e.message)
+            call.reject(e.message, ex = e)
+            return
         }
 
-        call.resolve()
+        // The valid entries are cancelled either way. Rejecting inside the loop and resolving here settled the call twice.
+        if (hasInvalidEntry) {
+            call.reject("Expected notifications to be a list of notification objects")
+        } else {
+            call.resolve()
+        }
     }
 
     @PluginMethod
@@ -254,6 +268,7 @@ public class LocalNotificationsPlugin : Plugin() {
     public companion object {
         internal const val LOCAL_NOTIFICATIONS: String = "display"
 
+        @Volatile
         private var staticBridge: Bridge? = null
 
         public fun fireReceived(notification: JSObject?) {
