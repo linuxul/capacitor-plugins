@@ -7,13 +7,13 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "AppPlugin"
     public let jsName = "App"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "exitApp", returnType: .promise),
-        CAPPluginMethod(name: "getInfo", returnType: .promise),
-        CAPPluginMethod(name: "getAppLanguage", returnType: .promise),
-        CAPPluginMethod(name: "getLaunchUrl", returnType: .promise),
-        CAPPluginMethod(name: "getState", returnType: .promise),
-        CAPPluginMethod(name: "minimizeApp", returnType: .promise),
-        CAPPluginMethod(name: "toggleBackButtonHandler", returnType: .promise)
+        .promise("exitApp", AppPlugin.exitApp),
+        .promise("getInfo", AppPlugin.getInfo),
+        .promise("getAppLanguage", AppPlugin.getAppLanguage),
+        .promise("getLaunchUrl", AppPlugin.getLaunchUrl),
+        .async("getState", AppPlugin.getState),
+        .promise("minimizeApp", AppPlugin.minimizeApp),
+        .promise("toggleBackButtonHandler", AppPlugin.toggleBackButtonHandler)
     ]
     private var observers: [NSObjectProtocol] = []
 
@@ -88,11 +88,11 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
         ]
     }
 
-    @objc func exitApp(_ call: CAPPluginCall) {
+    func exitApp(_ call: CAPPluginCall) {
         call.unimplemented()
     }
 
-    @objc func getInfo(_ call: CAPPluginCall) {
+    func getInfo(_ call: CAPPluginCall) {
         if let info = Bundle.main.infoDictionary {
             call.resolve([
                 "name": info["CFBundleDisplayName"] as? String ?? "",
@@ -106,7 +106,7 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
 
     }
 
-    @objc func getLaunchUrl(_ call: CAPPluginCall) {
+    func getLaunchUrl(_ call: CAPPluginCall) {
         // Settle once: with a launch URL the call used to resolve with it and then resolve again without data.
         if let result = AppPlugin.launchUrlResult(ApplicationDelegateProxy.shared.lastURL) {
             call.resolve(result)
@@ -123,25 +123,25 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
         return ["url": url.absoluteString]
     }
 
-    @objc func getState(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
-            call.resolve([
-                "isActive": UIApplication.shared.applicationState == UIApplication.State.active
-            ])
-        }
+    /// UIApplication is UIKit state: the method runs on the main actor, not the bridge queue.
+    @MainActor
+    func getState(_ call: CAPPluginCall) async -> JSObject {
+        return [
+            "isActive": UIApplication.shared.applicationState == UIApplication.State.active
+        ]
     }
 
-    @objc func minimizeApp(_ call: CAPPluginCall) {
+    func minimizeApp(_ call: CAPPluginCall) {
         call.unimplemented()
     }
 
-    @objc func getAppLanguage(_ call: CAPPluginCall) {
+    func getAppLanguage(_ call: CAPPluginCall) {
         call.resolve([
             "value": Bundle.main.preferredLocalizations.first ?? ""
         ])
     }
 
-    @objc func toggleBackButtonHandler(_ call: CAPPluginCall) {
+    func toggleBackButtonHandler(_ call: CAPPluginCall) {
         call.unimplemented()
     }
 }
