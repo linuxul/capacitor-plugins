@@ -44,8 +44,7 @@
     "build": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
-    "prepublishOnly": "npm run build",
-    "publish:cocoapod": "pod trunk push ./CapacitorClipboard.podspec --allow-warnings"
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@capacitor/android": "https://github.com/linuxul/capacitor/releases/download/9.0.0/capacitor-android-9.0.0.tgz",
