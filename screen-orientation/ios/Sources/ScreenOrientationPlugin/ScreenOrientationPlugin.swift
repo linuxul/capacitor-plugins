@@ -7,9 +7,9 @@ public class ScreenOrientationPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ScreenOrientationPlugin"
     public let jsName = "ScreenOrientation"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "orientation", returnType: .promise),
-        CAPPluginMethod(name: "lock", returnType: .promise),
-        CAPPluginMethod(name: "unlock", returnType: .promise)
+        .async("orientation", ScreenOrientationPlugin.orientation),
+        .promise("lock", ScreenOrientationPlugin.lock),
+        .promise("unlock", ScreenOrientationPlugin.unlock)
     ]
 
     private let implementation = ScreenOrientation()
@@ -29,15 +29,13 @@ public class ScreenOrientationPlugin: CAPPlugin, CAPBridgedPlugin {
         NotificationCenter.default.removeObserver(self)
     }
 
-    @objc public func orientation(_ call: CAPPluginCall) {
-        // UIDevice is UIKit state: read it on the main queue, not the bridge queue.
-        let implementation = self.implementation
-        DispatchQueue.main.async {
-            call.resolve(["type": implementation.getCurrentOrientationType()])
-        }
+    /// UIDevice is UIKit state: the method runs on the main actor, not the bridge queue.
+    @MainActor
+    public func orientation(_ call: CAPPluginCall) async -> JSObject {
+        return ["type": implementation.getCurrentOrientationType()]
     }
 
-    @objc public func lock(_ call: CAPPluginCall) {
+    public func lock(_ call: CAPPluginCall) {
         guard let lockToOrientation = call.getString("orientation") else {
             call.reject("Input option 'orientation' must be provided.")
             return
@@ -51,7 +49,7 @@ public class ScreenOrientationPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc public func unlock(_ call: CAPPluginCall) {
+    public func unlock(_ call: CAPPluginCall) {
         implementation.unlock { error in
             if let error = error {
                 call.reject(error.localizedDescription)

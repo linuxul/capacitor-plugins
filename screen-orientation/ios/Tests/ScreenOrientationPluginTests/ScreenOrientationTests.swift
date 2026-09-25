@@ -90,19 +90,17 @@ class ScreenOrientationTests: XCTestCase {
         XCTAssertEqual(implementation.fromDeviceOrientationToOrientationType(.faceUp), "portrait-primary")
     }
 
-    func testOrientationResolvesWithAType() {
-        let settled = expectation(description: "orientation settles")
-        var type: String?
-        let call = CAPPluginCall(callbackId: "test", methodName: "orientation", options: [:], success: { result, _ in
-            type = result.data?["type"] as? String
-            settled.fulfill()
+    @MainActor
+    func testOrientationReturnsAType() async {
+        // The bridge resolves the call with what the async method returns.
+        let call = CAPPluginCall(callbackId: "test", methodName: "orientation", options: [:], success: { _, _ in
+            XCTFail("orientation answers by returning")
         }, error: { _ in
             XCTFail("orientation must not reject")
         })
 
-        ScreenOrientationPlugin().orientation(call)
+        let result = await ScreenOrientationPlugin().orientation(call)
 
-        wait(for: [settled], timeout: 20)
-        XCTAssertNotNil(type)
+        XCTAssertNotNil(result["type"] as? String)
     }
 }
