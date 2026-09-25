@@ -72,33 +72,100 @@ import java.util.concurrent.atomic.AtomicInteger
     ]
 )
 public class CameraPlugin : Plugin() {
-    private var imageFileSavePath: String? = null
-    private var imageEditedFileSavePath: String? = null
-    private var imageFileUri: Uri? = null
-    private var imagePickedContentUri: Uri? = null
-    private var isEdited = false
-    private var isSaved = false
-    private var pickMultipleMedia: ActivityResultLauncher<PickVisualMediaRequest>? = null
-    private var pickMedia: ActivityResultLauncher<PickVisualMediaRequest>? = null
+    // The state of the active call. The plugin thread, the main thread and the executor take turns with it, one call
+    // at a time, so each field is volatile.
+    @Volatile private var imageFileSavePath: String? = null
+
+    @Volatile private var imageEditedFileSavePath: String? = null
+
+    @Volatile private var imageFileUri: Uri? = null
+
+    @Volatile private var imagePickedContentUri: Uri? = null
+
+    @Volatile private var isEdited = false
+
+    @Volatile private var isSaved = false
+
+    @Volatile private var pickMultipleMedia: ActivityResultLauncher<PickVisualMediaRequest>? = null
+
+    @Volatile private var pickMedia: ActivityResultLauncher<PickVisualMediaRequest>? = null
+
+    @Volatile private var settings = CameraSettings()
+
+    // The getPhoto or pickImages call the state above belongs to. As on iOS, another one made while it is in progress
+    // is rejected. Every path that settles it goes through resolveActiveCall or rejectActiveCall, which end it.
+    private val activeCall = ActiveCall<PluginCall>()
 
     private val nextLocalRequestCode = AtomicInteger()
 
     // Decodes and encodes the images. Activity results arrive on the main thread, which must not do this work.
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
-    private var settings = CameraSettings()
-
     @PluginMethod
     public fun getPhoto(call: PluginCall) {
-        isEdited = false
-        settings = getSettings(call)
-        doShow(call)
+        withActiveCall(call) {
+            resetCallState(call)
+            doShow(call)
+        }
     }
 
     @PluginMethod
     public fun pickImages(call: PluginCall) {
+        withActiveCall(call) {
+            resetCallState(call)
+            openPhotos(call, true)
+        }
+    }
+
+    /**
+     * Runs [block] with [call] as the active call: it becomes the active call when none is in progress, or already is
+     * (a result arriving for it, or a call Android restored after ending the app while the camera was in front). When
+     * another call is in progress, [call] is rejected instead, since the state belongs to that call.
+     *
+     * The bridge rejects a call with what a plugin method or an activity or permission callback throws, without going
+     * through [rejectActiveCall], so this ends [call] when [block] throws: otherwise no later call could begin.
+     */
+    private inline fun withActiveCall(call: PluginCall, block: () -> Unit) {
+        if (!activeCall.begin(call)) {
+            call.reject(CALL_IN_PROGRESS_ERROR)
+            return
+        }
+        try {
+            block()
+        } catch (t: Throwable) {
+            activeCall.end(call)
+            throw t
+        }
+    }
+
+    /**
+     * Makes the state [call]'s: its settings, and nothing the call before it left behind.
+     */
+    private fun resetCallState(call: PluginCall) {
         settings = getSettings(call)
-        openPhotos(call, true)
+        isEdited = false
+        isSaved = false
+        imageFileSavePath = null
+        imageEditedFileSavePath = null
+        imageFileUri = null
+        imagePickedContentUri = null
+    }
+
+    /**
+     * Ends [call] and resolves it. It ends first, so that the next getPhoto or pickImages call the JavaScript caller
+     * makes once this one settles can begin.
+     */
+    private fun resolveActiveCall(call: PluginCall, data: JSObject) {
+        activeCall.end(call)
+        call.resolve(data)
+    }
+
+    /**
+     * Ends [call] and rejects it, as [resolveActiveCall] does.
+     */
+    private fun rejectActiveCall(call: PluginCall, message: String, ex: Exception? = null) {
+        activeCall.end(call)
+        call.reject(message, ex = ex)
     }
 
     @PluginMethod
@@ -136,7 +203,7 @@ public class CameraPlugin : Plugin() {
                     openCamera(call)
                 }
             },
-            { call.reject(USER_CANCELLED) }
+            { rejectActiveCall(call, USER_CANCELLED) }
         )
         // Plugin methods run on the bridge thread, and fragments are shown from the main thread
         bridge.executeOnMainThread {
@@ -144,14 +211,14 @@ public class CameraPlugin : Plugin() {
                 fragment.show(activity.supportFragmentManager, "capacitorModalsActionSheet")
             } catch (ex: IllegalStateException) {
                 // The activity has already saved its state
-                call.reject(PROMPT_ERROR, ex = ex)
+                rejectActiveCall(call, PROMPT_ERROR, ex)
             }
         }
     }
 
     private fun showCamera(call: PluginCall) {
         if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
-            call.reject(NO_CAMERA_ERROR)
+            rejectActiveCall(call, NO_CAMERA_ERROR)
             return
         }
         openCamera(call)
@@ -181,15 +248,26 @@ public class CameraPlugin : Plugin() {
      */
     @PermissionCallback
     private fun cameraPermissionsCallback(call: PluginCall) {
-        if (call.methodName == "pickImages") {
-            openPhotos(call, true)
-        } else {
-            if (settings.source == CameraSource.CAMERA && getPermissionState(CAMERA) != PermissionState.GRANTED) {
-                Logger.debug(logTag, "User denied camera permission: " + getPermissionState(CAMERA).toString())
-                call.reject(PERMISSION_DENIED_ERROR_CAMERA)
-                return
+        if (!activeCall.isActive(call)) {
+            // The bridge hands a plugin's permission results to its waiting calls in the order they asked, whichever
+            // prompt a result is for. When requestPermissions asks while the active call waits for the camera prompt,
+            // the two calls can swap results: this is then the requestPermissions call, and checkPermissions, its
+            // callback, answers and ends the active call. Answer this one as checkPermissions would instead of taking
+            // a picture for it.
+            checkPermissions(call)
+            return
+        }
+        withActiveCall(call) {
+            if (call.methodName == "pickImages") {
+                openPhotos(call, true)
+            } else {
+                if (settings.source == CameraSource.CAMERA && getPermissionState(CAMERA) != PermissionState.GRANTED) {
+                    Logger.debug(logTag, "User denied camera permission: " + getPermissionState(CAMERA).toString())
+                    rejectActiveCall(call, PERMISSION_DENIED_ERROR_CAMERA)
+                    return
+                }
+                doShow(call)
             }
-            doShow(call)
         }
     }
 
@@ -239,7 +317,7 @@ public class CameraPlugin : Plugin() {
         }
         val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         if (takePictureIntent.resolveActivity(context.packageManager) == null) {
-            call.reject(NO_CAMERA_ACTIVITY_ERROR)
+            rejectActiveCall(call, NO_CAMERA_ACTIVITY_ERROR)
             return
         }
         // If we will be saving the photo, send the target file along
@@ -250,7 +328,7 @@ public class CameraPlugin : Plugin() {
             imageFileUri = FileProvider.getUriForFile(activity, "$appId.fileprovider", photoFile)
             takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, imageFileUri)
         } catch (ex: Exception) {
-            call.reject(IMAGE_FILE_SAVE_ERROR, ex = ex)
+            rejectActiveCall(call, IMAGE_FILE_SAVE_ERROR, ex)
             return
         }
 
@@ -289,34 +367,42 @@ public class CameraPlugin : Plugin() {
     private fun openPhotos(call: PluginCall, multiple: Boolean) {
         val request = PickVisualMediaRequest.Builder().setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly).build()
         try {
+            // Each launcher unregisters before its call settles: from then on the field may hold the next call's. A
+            // result for a call that has settled already is dropped, since the state may be the next call's too.
             if (multiple) {
                 val launcher =
                     registerActivityResultLauncher(getContractForCall(call)) { uris ->
+                        pickMultipleMedia?.unregister()
+                        if (!activeCall.isActive(call)) {
+                            return@registerActivityResultLauncher
+                        }
                         if (uris.isNotEmpty()) {
                             processInBackground(call) { processPickedImages(uris, call) }
                         } else {
-                            call.reject(USER_CANCELLED)
+                            rejectActiveCall(call, USER_CANCELLED)
                         }
-                        pickMultipleMedia?.unregister()
                     }
                 pickMultipleMedia = launcher
                 launcher.launch(request)
             } else {
                 val launcher =
                     registerActivityResultLauncher(ActivityResultContracts.PickVisualMedia()) { uri ->
+                        pickMedia?.unregister()
+                        if (!activeCall.isActive(call)) {
+                            return@registerActivityResultLauncher
+                        }
                         if (uri != null) {
                             imagePickedContentUri = uri
                             processInBackground(call) { processPickedImage(uri, call) }
                         } else {
-                            call.reject(USER_CANCELLED)
+                            rejectActiveCall(call, USER_CANCELLED)
                         }
-                        pickMedia?.unregister()
                     }
                 pickMedia = launcher
                 launcher.launch(request)
             }
         } catch (ex: ActivityNotFoundException) {
-            call.reject(NO_PHOTO_ACTIVITY_ERROR)
+            rejectActiveCall(call, NO_PHOTO_ACTIVITY_ERROR)
         }
     }
 
@@ -328,18 +414,18 @@ public class CameraPlugin : Plugin() {
                 val processResult = processPickedImages(imageUri)
                 val error = processResult.getString("error")
                 if (!error.isNullOrEmpty()) {
-                    call.reject(error)
+                    rejectActiveCall(call, error)
                     return
                 }
                 photos.put(processResult)
             } catch (ex: SecurityException) {
                 // Rejecting and going on to resolve settled the call twice
-                call.reject("SecurityException", ex = ex)
+                rejectActiveCall(call, "SecurityException", ex)
                 return
             }
         }
         ret.put("photos", photos)
-        call.resolve(ret)
+        resolveActiveCall(call, ret)
     }
 
     /**
@@ -351,25 +437,27 @@ public class CameraPlugin : Plugin() {
                 try {
                     work()
                 } catch (ex: Exception) {
-                    call.reject(UNABLE_TO_PROCESS_IMAGE, ex = ex)
+                    rejectActiveCall(call, UNABLE_TO_PROCESS_IMAGE, ex)
                 }
             }
         } catch (ex: RejectedExecutionException) {
             // The plugin has been destroyed
-            call.reject(UNABLE_TO_PROCESS_IMAGE, ex = ex)
+            rejectActiveCall(call, UNABLE_TO_PROCESS_IMAGE, ex)
         }
     }
 
     @ActivityCallback
     public fun processCameraImage(call: PluginCall, @Suppress("UNUSED_PARAMETER") result: ActivityResult?) {
-        processInBackground(call) { processCapturedImage(call) }
+        withActiveCall(call) {
+            processInBackground(call) { processCapturedImage(call) }
+        }
     }
 
     private fun processCapturedImage(call: PluginCall) {
         settings = getSettings(call)
         val savePath = imageFileSavePath
         if (savePath == null) {
-            call.reject(IMAGE_PROCESS_NO_FILE_ERROR)
+            rejectActiveCall(call, IMAGE_PROCESS_NO_FILE_ERROR)
             return
         }
         // Load the image as a Bitmap
@@ -377,7 +465,7 @@ public class CameraPlugin : Plugin() {
         val bitmap = BitmapFactory.decodeFile(savePath, BitmapFactory.Options())
 
         if (bitmap == null) {
-            call.reject(USER_CANCELLED)
+            rejectActiveCall(call, USER_CANCELLED)
             return
         }
 
@@ -388,7 +476,7 @@ public class CameraPlugin : Plugin() {
         settings = getSettings(call)
         val u = result?.data?.data
         if (u == null) {
-            call.reject(USER_CANCELLED)
+            rejectActiveCall(call, USER_CANCELLED)
             return
         }
 
@@ -405,15 +493,15 @@ public class CameraPlugin : Plugin() {
             val bitmap = BitmapFactory.decodeStream(imageStream)
 
             if (bitmap == null) {
-                call.reject("Unable to process bitmap")
+                rejectActiveCall(call, "Unable to process bitmap")
                 return
             }
 
             returnResult(call, bitmap, imageUri)
         } catch (err: OutOfMemoryError) {
-            call.reject("Out of memory")
+            rejectActiveCall(call, "Out of memory")
         } catch (ex: FileNotFoundException) {
-            call.reject("No such image found", ex = ex)
+            rejectActiveCall(call, "No such image found", ex)
         } finally {
             closeImageStream(imageStream)
         }
@@ -474,20 +562,22 @@ public class CameraPlugin : Plugin() {
 
     @ActivityCallback
     private fun processEditedImage(call: PluginCall, result: ActivityResult?) {
-        processInBackground(call) {
-            isEdited = true
-            settings = getSettings(call)
-            if (result?.resultCode == Activity.RESULT_CANCELED) {
-                // User cancelled the edit operation, if this file was picked from photos,
-                // process the original picked image, otherwise process it as a camera photo
-                val pickedUri = imagePickedContentUri
-                if (pickedUri != null) {
-                    processPickedImage(pickedUri, call)
+        withActiveCall(call) {
+            processInBackground(call) {
+                isEdited = true
+                settings = getSettings(call)
+                if (result?.resultCode == Activity.RESULT_CANCELED) {
+                    // User cancelled the edit operation, if this file was picked from photos,
+                    // process the original picked image, otherwise process it as a camera photo
+                    val pickedUri = imagePickedContentUri
+                    if (pickedUri != null) {
+                        processPickedImage(pickedUri, call)
+                    } else {
+                        processCapturedImage(call)
+                    }
                 } else {
-                    processCapturedImage(call)
+                    processPickedImage(call, result)
                 }
-            } else {
-                processPickedImage(call, result)
             }
         }
     }
@@ -546,7 +636,7 @@ public class CameraPlugin : Plugin() {
             try {
                 prepareBitmap(originalBitmap, u, exif)
             } catch (e: IOException) {
-                call.reject(UNABLE_TO_PROCESS_IMAGE)
+                rejectActiveCall(call, UNABLE_TO_PROCESS_IMAGE)
                 return
             }
         // Compress the final image and prepare for output to client
@@ -570,13 +660,8 @@ public class CameraPlugin : Plugin() {
             }
         }
 
-        when (settings.resultType) {
-            CameraResultType.BASE64 -> returnBase64(call, exif, bitmapOutputStream)
-            CameraResultType.URI -> returnFileURI(call, exif, u, bitmapOutputStream)
-            CameraResultType.DATAURL -> returnDataUrl(call, exif, bitmapOutputStream)
-            null -> call.reject(INVALID_RESULT_TYPE_ERROR)
-        }
-        // Result returned, clear stored paths and images
+        // Clear stored paths and images before the result goes out: settling ends the call, and the next call's
+        // paths would be the ones cleared after that. The result itself is built from u and bitmapOutputStream.
         if (settings.resultType != CameraResultType.URI) {
             deleteImageFile()
         }
@@ -584,6 +669,13 @@ public class CameraPlugin : Plugin() {
         imageFileUri = null
         imagePickedContentUri = null
         imageEditedFileSavePath = null
+
+        when (settings.resultType) {
+            CameraResultType.BASE64 -> returnBase64(call, exif, bitmapOutputStream)
+            CameraResultType.URI -> returnFileURI(call, exif, u, bitmapOutputStream)
+            CameraResultType.DATAURL -> returnDataUrl(call, exif, bitmapOutputStream)
+            null -> rejectActiveCall(call, INVALID_RESULT_TYPE_ERROR)
+        }
     }
 
     @Throws(IOException::class)
@@ -627,9 +719,9 @@ public class CameraPlugin : Plugin() {
             ret.put("path", newUri.toString())
             ret.put("webPath", FileUtils.getPortablePath(context, bridge.localUrl, newUri))
             ret.put("saved", isSaved)
-            call.resolve(ret)
+            resolveActiveCall(call, ret)
         } else {
-            call.reject(UNABLE_TO_PROCESS_IMAGE)
+            rejectActiveCall(call, UNABLE_TO_PROCESS_IMAGE)
         }
     }
 
@@ -671,7 +763,7 @@ public class CameraPlugin : Plugin() {
         data.put("format", "jpeg")
         data.put("dataUrl", "data:image/jpeg;base64,$encoded")
         data.put("exif", exif.toJson())
-        call.resolve(data)
+        resolveActiveCall(call, data)
     }
 
     private fun returnBase64(call: PluginCall, exif: ExifWrapper, bitmapOutputStream: ByteArrayOutputStream) {
@@ -681,7 +773,18 @@ public class CameraPlugin : Plugin() {
         data.put("format", "jpeg")
         data.put("base64String", encoded)
         data.put("exif", exif.toJson())
-        call.resolve(data)
+        resolveActiveCall(call, data)
+    }
+
+    /**
+     * Also the permission callback of requestPermissions, which the bridge can hand the active call instead of the
+     * requestPermissions call (see [cameraPermissionsCallback]). Ending the call it answers keeps that call from
+     * blocking the next one; any other call is not the active call, and ending it changes nothing.
+     */
+    @PluginMethod
+    override fun checkPermissions(pluginCall: PluginCall) {
+        activeCall.end(pluginCall)
+        super.checkPermissions(pluginCall)
     }
 
     @PluginMethod
@@ -727,10 +830,10 @@ public class CameraPlugin : Plugin() {
             if (editIntent != null) {
                 startActivityForResult(call, editIntent, "processEditedImage")
             } else {
-                call.reject(IMAGE_EDIT_ERROR)
+                rejectActiveCall(call, IMAGE_EDIT_ERROR)
             }
         } catch (ex: Exception) {
-            call.reject(IMAGE_EDIT_ERROR, ex = ex)
+            rejectActiveCall(call, IMAGE_EDIT_ERROR, ex)
         }
     }
 
@@ -779,6 +882,8 @@ public class CameraPlugin : Plugin() {
     override fun handleOnDestroy() {
         pickMedia?.unregister()
         pickMultipleMedia?.unregister()
+        // The results the active call waits for can no longer arrive
+        activeCall.clear()
         executor.shutdown()
     }
 
@@ -802,5 +907,8 @@ public class CameraPlugin : Plugin() {
         private const val PROMPT_ERROR = "Unable to show the photo prompt"
         private const val IMAGE_GALLERY_SAVE_ERROR = "Unable to save the image in the gallery"
         private const val USER_CANCELLED = "User cancelled photos app"
+
+        // The same message as on iOS
+        private const val CALL_IN_PROGRESS_ERROR = "Another getPhoto or pickImages call is in progress"
     }
 }
