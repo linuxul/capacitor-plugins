@@ -18,6 +18,7 @@ import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
@@ -80,8 +81,7 @@ public class SharePlugin : Plugin() {
     @PluginMethod
     public fun share(call: PluginCall) {
         if (isPresenting) {
-            call.reject("Can't share while sharing is in progress")
-            return
+            throw PluginException("Can't share while sharing is in progress")
         }
 
         val title = call.getString("title", "")
@@ -91,13 +91,11 @@ public class SharePlugin : Plugin() {
         val dialogTitle = call.getString("dialogTitle", "Share")
 
         if (text == null && url == null && (files == null || files.length() == 0)) {
-            call.reject("Must provide a URL or Message or files")
-            return
+            throw PluginException("Must provide a URL or Message or files")
         }
 
         if (url != null && !isFileUrl(url) && !isHttpUrl(url)) {
-            call.reject("Unsupported url")
-            return
+            throw PluginException("Unsupported url")
         }
 
         val intent = Intent(if (files != null && files.length() > 1) Intent.ACTION_SEND_MULTIPLE else Intent.ACTION_SEND)
