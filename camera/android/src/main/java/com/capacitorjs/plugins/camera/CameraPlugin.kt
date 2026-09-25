@@ -42,7 +42,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -80,6 +82,9 @@ public class CameraPlugin : Plugin() {
     private var pickMedia: ActivityResultLauncher<PickVisualMediaRequest>? = null
 
     private val nextLocalRequestCode = AtomicInteger()
+
+    // Decodes and encodes the images. Activity results arrive on the main thread, which must not do this work.
+    private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private var settings = CameraSettings()
 
@@ -133,7 +138,15 @@ public class CameraPlugin : Plugin() {
             },
             { call.reject(USER_CANCELLED) }
         )
-        fragment.show(activity.supportFragmentManager, "capacitorModalsActionSheet")
+        // Plugin methods run on the bridge thread, and fragments are shown from the main thread
+        bridge.executeOnMainThread {
+            try {
+                fragment.show(activity.supportFragmentManager, "capacitorModalsActionSheet")
+            } catch (ex: IllegalStateException) {
+                // The activity has already saved its state
+                call.reject(PROMPT_ERROR, ex = ex)
+            }
+        }
     }
 
     private fun showCamera(call: PluginCall) {
@@ -280,7 +293,7 @@ public class CameraPlugin : Plugin() {
                 val launcher =
                     registerActivityResultLauncher(getContractForCall(call)) { uris ->
                         if (uris.isNotEmpty()) {
-                            Executors.newSingleThreadExecutor().execute { processPickedImages(uris, call) }
+                            processInBackground(call) { processPickedImages(uris, call) }
                         } else {
                             call.reject(USER_CANCELLED)
                         }
@@ -293,7 +306,7 @@ public class CameraPlugin : Plugin() {
                     registerActivityResultLauncher(ActivityResultContracts.PickVisualMedia()) { uri ->
                         if (uri != null) {
                             imagePickedContentUri = uri
-                            processPickedImage(uri, call)
+                            processInBackground(call) { processPickedImage(uri, call) }
                         } else {
                             call.reject(USER_CANCELLED)
                         }
@@ -320,15 +333,39 @@ public class CameraPlugin : Plugin() {
                 }
                 photos.put(processResult)
             } catch (ex: SecurityException) {
-                call.reject("SecurityException")
+                // Rejecting and going on to resolve settled the call twice
+                call.reject("SecurityException", ex = ex)
+                return
             }
         }
         ret.put("photos", photos)
         call.resolve(ret)
     }
 
+    /**
+     * Runs [work] on the plugin's executor, rejecting the call with what it throws: nothing else would settle it.
+     */
+    private fun processInBackground(call: PluginCall, work: () -> Unit) {
+        try {
+            executor.execute {
+                try {
+                    work()
+                } catch (ex: Exception) {
+                    call.reject(UNABLE_TO_PROCESS_IMAGE, ex = ex)
+                }
+            }
+        } catch (ex: RejectedExecutionException) {
+            // The plugin has been destroyed
+            call.reject(UNABLE_TO_PROCESS_IMAGE, ex = ex)
+        }
+    }
+
     @ActivityCallback
     public fun processCameraImage(call: PluginCall, @Suppress("UNUSED_PARAMETER") result: ActivityResult?) {
+        processInBackground(call) { processCapturedImage(call) }
+    }
+
+    private fun processCapturedImage(call: PluginCall) {
         settings = getSettings(call)
         val savePath = imageFileSavePath
         if (savePath == null) {
@@ -437,19 +474,21 @@ public class CameraPlugin : Plugin() {
 
     @ActivityCallback
     private fun processEditedImage(call: PluginCall, result: ActivityResult?) {
-        isEdited = true
-        settings = getSettings(call)
-        if (result?.resultCode == Activity.RESULT_CANCELED) {
-            // User cancelled the edit operation, if this file was picked from photos,
-            // process the original picked image, otherwise process it as a camera photo
-            val pickedUri = imagePickedContentUri
-            if (pickedUri != null) {
-                processPickedImage(pickedUri, call)
+        processInBackground(call) {
+            isEdited = true
+            settings = getSettings(call)
+            if (result?.resultCode == Activity.RESULT_CANCELED) {
+                // User cancelled the edit operation, if this file was picked from photos,
+                // process the original picked image, otherwise process it as a camera photo
+                val pickedUri = imagePickedContentUri
+                if (pickedUri != null) {
+                    processPickedImage(pickedUri, call)
+                } else {
+                    processCapturedImage(call)
+                }
             } else {
-                processCameraImage(call, result)
+                processPickedImage(call, result)
             }
-        } else {
-            processPickedImage(call, result)
         }
     }
 
@@ -740,6 +779,7 @@ public class CameraPlugin : Plugin() {
     override fun handleOnDestroy() {
         pickMedia?.unregister()
         pickMultipleMedia?.unregister()
+        executor.shutdown()
     }
 
     internal companion object {
@@ -759,6 +799,7 @@ public class CameraPlugin : Plugin() {
         private const val IMAGE_PROCESS_NO_FILE_ERROR = "Unable to process image, file not found on disk"
         private const val UNABLE_TO_PROCESS_IMAGE = "Unable to process image"
         private const val IMAGE_EDIT_ERROR = "Unable to edit image"
+        private const val PROMPT_ERROR = "Unable to show the photo prompt"
         private const val IMAGE_GALLERY_SAVE_ERROR = "Unable to save the image in the gallery"
         private const val USER_CANCELLED = "User cancelled photos app"
     }
