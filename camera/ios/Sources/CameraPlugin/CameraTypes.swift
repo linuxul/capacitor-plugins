@@ -1,3 +1,5 @@
+import Foundation
+import Capacitor
 import UIKit
 
 // MARK: - Public
@@ -54,6 +56,37 @@ public struct CameraResult {
 }
 
 // MARK: - Internal
+
+/// The one getPhoto or pickImages call a picker works for. The bridge queue starts it, and the main queue and the
+/// queues Photos calls back on settle it, so access is locked.
+internal final class ActiveCall {
+    private let lock = NSLock()
+    private var call: CAPPluginCall?
+
+    /// Makes `call` the active call. Returns false, leaving the active call in place, when another is in progress.
+    func begin(_ call: CAPPluginCall) -> Bool {
+        return lock.withLock {
+            guard self.call == nil else {
+                return false
+            }
+            self.call = call
+            return true
+        }
+    }
+
+    /// The active call, to read its options.
+    var current: CAPPluginCall? {
+        return lock.withLock { call }
+    }
+
+    /// Removes and returns the active call, so that only one path settles it and the next call can begin.
+    func take() -> CAPPluginCall? {
+        return lock.withLock {
+            defer { call = nil }
+            return call
+        }
+    }
+}
 
 internal enum CameraPermissionType: String, CaseIterable {
     case camera

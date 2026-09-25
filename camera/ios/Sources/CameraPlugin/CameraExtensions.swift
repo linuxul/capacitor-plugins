@@ -90,11 +90,19 @@ internal extension UIImage {
             targetWidth = (imageWidth * maxHeight) / imageHeight
             targetHeight = maxHeight
         }
-        // generate the new image and return
-        UIGraphicsBeginImageContextWithOptions(.init(width: targetWidth, height: targetHeight), false, 1.0) // size, opaque and scale
-        self.draw(in: .init(origin: .zero, size: .init(width: targetWidth, height: targetHeight)))
-        let resizedImage = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return resizedImage ?? self
+        // a zero-sized source gives NaN, and a renderer needs a positive size
+        guard targetWidth.isFinite, targetHeight.isFinite, targetWidth > 0, targetHeight > 0 else {
+            return self
+        }
+        // generate the new image and return: a non-opaque 8-bit sRGB bitmap at scale 1, as the
+        // UIGraphicsBeginImageContextWithOptions(size, false, 1.0) this replaces produced
+        let targetSize = CGSize(width: targetWidth, height: targetHeight)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        format.opaque = false
+        format.preferredRange = .standard
+        return UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
+            self.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
     }
 }
