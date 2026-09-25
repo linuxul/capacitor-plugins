@@ -1,10 +1,40 @@
 import XCTest
 import UIKit
+import Capacitor
 @testable import SplashScreenPlugin
 
 class SplashScreenTests: XCTestCase {
     // Showing and hiding go through the main queue and UIKit transitions; allow for a loaded machine.
     private let timeout: TimeInterval = 20
+
+    func testShowWithoutASplashScreenIsRejected() {
+        // A plugin that was not loaded by a bridge has no splash screen.
+        XCTAssertEqual(thrownError(SplashScreenPlugin().show, "show")?.message, "Unable to show Splash Screen")
+    }
+
+    func testHideWithoutASplashScreenIsRejected() {
+        XCTAssertEqual(thrownError(SplashScreenPlugin().hide, "hide")?.message, "Unable to hide Splash Screen")
+    }
+
+    /// The error `method` throws, which the bridge rejects the call with; nil when it does not throw.
+    private func thrownError(_ method: (CAPPluginCall) throws -> Void, _ name: String) -> CAPPluginError? {
+        let call = CAPPluginCall(callbackId: "test", methodName: name, options: [:], success: { _, _ in
+            XCTFail("\(name) must not resolve")
+        }, error: { _ in
+            XCTFail("\(name) answers by throwing")
+        })
+        do {
+            try method(call)
+            XCTFail("\(name) must throw")
+            return nil
+        } catch let error as CAPPluginError {
+            XCTAssertNil(error.code)
+            return error
+        } catch {
+            XCTFail("unexpected error \(error)")
+            return nil
+        }
+    }
 
     func testPreferredSceneIsTheForegroundActiveOne() {
         let scenes: [(String, UIScene.ActivationState)] = [

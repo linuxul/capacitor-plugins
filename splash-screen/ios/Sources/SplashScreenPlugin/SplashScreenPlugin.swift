@@ -19,29 +19,30 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    // Show the splash screen
-    public func show(_ call: CAPPluginCall) {
-        if let splash = splashScreen {
-            let settings = splashScreenSettings(from: call)
-            splash.show(settings: settings,
-                        completion: {
-                            call.resolve()
-                        })
-        } else {
-            call.reject("Unable to show Splash Screen")
-        }
+    // show and hide stay synchronous: the bridge queue runs them in the order of the calls and the splash screen hands
+    // the UIKit work to the main queue in that order, so a hide after a show wins. Async methods would not keep that
+    // order.
 
+    // Show the splash screen
+    public func show(_ call: CAPPluginCall) throws {
+        guard let splash = splashScreen else {
+            throw CAPPluginError("Unable to show Splash Screen")
+        }
+        let settings = splashScreenSettings(from: call)
+        splash.show(settings: settings,
+                    completion: {
+                        call.resolve()
+                    })
     }
 
     // Hide the splash screen
-    public func hide(_ call: CAPPluginCall) {
-        if let splash = splashScreen {
-            let settings = splashScreenSettings(from: call)
-            splash.hide(settings: settings)
-            call.resolve()
-        } else {
-            call.reject("Unable to hide Splash Screen")
+    public func hide(_ call: CAPPluginCall) throws {
+        guard let splash = splashScreen else {
+            throw CAPPluginError("Unable to hide Splash Screen")
         }
+        let settings = splashScreenSettings(from: call)
+        splash.hide(settings: settings)
+        call.resolve()
     }
 
     private func splashScreenSettings(from call: CAPPluginCall) -> SplashScreenSettings {
