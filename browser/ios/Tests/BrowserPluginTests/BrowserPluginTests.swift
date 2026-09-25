@@ -1,13 +1,11 @@
 import XCTest
 import UIKit
 import SafariServices
+import WebKit
 import Capacitor
 @testable import BrowserPlugin
 
 final class BrowserPluginTests: XCTestCase {
-    // The calls settle from the main queue; allow for a loaded machine.
-    private let timeout: TimeInterval = 20
-
     func testTopmostPresenterWalksToTheLastPresentedController() {
         let root = FakePresentingController()
         let modal = FakePresentingController()
@@ -64,38 +62,120 @@ final class BrowserPluginTests: XCTestCase {
         XCTAssertNil(browser.viewController)
     }
 
-    func testOpenRejectsWhenThereIsNothingToPresentFrom() {
-        let rejection = settle(CAPBrowserPlugin().open, "open", ["url": "https://capacitorjs.com"])
-        XCTAssertEqual(rejection, "Unable to display URL: there is no view controller to present it from")
+    @MainActor
+    func testOpenRejectsWhenThereIsNothingToPresentFrom() async {
+        let error = await thrownError { try await CAPBrowserPlugin().open(self.makeCall("open", ["url": "https://capacitorjs.com"])) }
+        XCTAssertEqual(error?.message, "Unable to display URL: there is no view controller to present it from")
+        XCTAssertNil(error?.code)
     }
 
-    func testOpenRejectsAnInvalidUrl() {
-        XCTAssertEqual(settle(CAPBrowserPlugin().open, "open", [:]), "Must provide a valid URL to open")
+    @MainActor
+    func testOpenRejectsAnInvalidUrl() async {
+        let error = await thrownError { try await CAPBrowserPlugin().open(self.makeCall("open", [:])) }
+        XCTAssertEqual(error?.message, "Must provide a valid URL to open")
+        XCTAssertNil(error?.code)
     }
 
-    func testCloseRejectsWhenNoBrowserIsOpen() {
-        XCTAssertEqual(settle(CAPBrowserPlugin().close, "close", [:]), "No active window to close!")
+    @MainActor
+    func testOpenRejectsAUrlTheBrowserCannotShow() async {
+        let harness = Harness()
+        let error = await thrownError { try await harness.plugin.open(self.makeCall("open", ["url": "file:///tmp/page.html"])) }
+        XCTAssertEqual(error?.message, "Unable to display URL")
     }
 
-    /// Calls `method` and waits for it to settle. Returns the rejection message, or nil when the call resolved.
-    private func settle(_ method: (CAPPluginCall) -> Void, _ name: String, _ options: JSObject) -> String? {
-        let settled = expectation(description: "\(name) settles")
-        var rejection: String?
-        method(CAPPluginCall(callbackId: "test", methodName: name, options: options, success: { _, _ in
-            settled.fulfill()
-        }, error: { error in
-            rejection = error.message
-            settled.fulfill()
-        }))
-        wait(for: [settled], timeout: timeout)
-        return rejection
+    @MainActor
+    func testCloseRejectsWhenNoBrowserIsOpen() async {
+        let error = await thrownError { try await CAPBrowserPlugin().close(self.makeCall("close", [:])) }
+        XCTAssertEqual(error?.message, "No active window to close!")
+        XCTAssertNil(error?.code)
+    }
+
+    @MainActor
+    func testOpenReturnsOnceTheBrowserIsShownAndCloseForgetsIt() async throws {
+        let harness = Harness()
+        try await harness.plugin.open(makeCall("open", ["url": "https://capacitorjs.com"]))
+        XCTAssertTrue(harness.root.fakePresented is SFSafariViewController)
+
+        let second = await thrownError { try await harness.plugin.open(self.makeCall("open", ["url": "https://capacitorjs.com"])) }
+        XCTAssertEqual(second?.message, "Unable to display URL", "only one browser at a time")
+
+        try await harness.plugin.close(makeCall("close", [:]))
+        let again = await thrownError { try await harness.plugin.close(self.makeCall("close", [:])) }
+        XCTAssertEqual(again?.message, "No active window to close!")
+    }
+
+    @MainActor
+    func testARefusedPresentationRejectsAndDoesNotBlockTheNextOpen() async throws {
+        // UIKit logs and does nothing when the presenter is mid-transition or not in a window. The call used to hang,
+        // and the browser it had prepared made every later open fail.
+        let harness = Harness()
+        harness.root.refusesPresentations = true
+        let error = await thrownError { try await harness.plugin.open(self.makeCall("open", ["url": "https://capacitorjs.com"])) }
+        XCTAssertEqual(error?.message, "Unable to display URL: there is no view controller to present it from")
+
+        harness.root.refusesPresentations = false
+        try await harness.plugin.open(makeCall("open", ["url": "https://capacitorjs.com"]))
+        XCTAssertTrue(harness.root.fakePresented is SFSafariViewController)
+    }
+
+    func testOnceContinuationResumesOnlyWithTheFirstValue() async {
+        let value = await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
+            let once = OnceContinuation(continuation, fallback: 0)
+            XCTAssertTrue(once.resume(returning: 1))
+            XCTAssertFalse(once.resume(returning: 2))
+        }
+        XCTAssertEqual(value, 1)
+    }
+
+    func testOnceContinuationReleasedWithoutAnswerResumesWithTheFallback() async {
+        let value = await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
+            _ = OnceContinuation(continuation, fallback: 7)
+        }
+        XCTAssertEqual(value, 7)
+    }
+
+    /// The CAPPluginError `body` throws, which the bridge rejects the call with; nil when it returns.
+    @MainActor
+    private func thrownError(_ body: () async throws -> Void) async -> CAPPluginError? {
+        do {
+            try await body()
+            XCTFail("the method must throw")
+            return nil
+        } catch let error as CAPPluginError {
+            return error
+        } catch {
+            XCTFail("unexpected error \(error)")
+            return nil
+        }
+    }
+
+    private func makeCall(_ method: String, _ options: JSObject) -> CAPPluginCall {
+        return CAPPluginCall(callbackId: "test", methodName: method, options: options, success: { _, _ in
+            XCTFail("\(method) answers by returning or throwing")
+        }, error: { _ in
+            XCTFail("\(method) answers by returning or throwing")
+        })
     }
 }
 
-/// A controller whose presentation state the test sets, since real presentation needs a window and an app.
+/// A plugin whose bridge shows `root`. The plugin's bridge is weak: the harness keeps it.
+private struct Harness {
+    let plugin = CAPBrowserPlugin()
+    let root = FakePresentingController()
+    let bridge = FakeBridge()
+
+    init() {
+        bridge.viewController = root
+        plugin.bridge = bridge
+    }
+}
+
+/// A controller whose presentation state the test sets, since real presentation needs a window and an app. It keeps
+/// what it is asked to present, the way UIKit does while a controller is on screen, unless it refuses presentations.
 private final class FakePresentingController: UIViewController {
     var fakePresented: UIViewController?
     var fakeBeingDismissed = false
+    var refusesPresentations = false
 
     override var presentedViewController: UIViewController? {
         return fakePresented
@@ -104,4 +184,49 @@ private final class FakePresentingController: UIViewController {
     override var isBeingDismissed: Bool {
         return fakeBeingDismissed
     }
+
+    override func present(_ viewControllerToPresent: UIViewController, animated flag: Bool, completion: (() -> Void)? = nil) {
+        guard !refusesPresentations else {
+            return
+        }
+        fakePresented = viewControllerToPresent
+        completion?()
+    }
+}
+
+/// A bridge with just enough behaviour for the plugin to find its view controller. Members it never uses trap.
+private final class FakeBridge: CAPBridgeProtocol {
+    var viewController: UIViewController?
+    var webView: WKWebView?
+    var isSimEnvironment = true
+    var isDevEnvironment = true
+    var userInterfaceStyle = UIUserInterfaceStyle.unspecified
+    var autoRegisterPlugins = false
+    var statusBarVisible = true
+    var statusBarStyle = UIStatusBarStyle.default
+    var statusBarAnimation = UIStatusBarAnimation.fade
+    var config: InstanceConfiguration { fatalError("unused") }
+    var notificationRouter: NotificationRouter { fatalError("unused") }
+
+    func plugin(withName: String) -> CAPPlugin? { nil }
+    func saveCall(_ call: CAPPluginCall) {}
+    func savedCall(withID: String) -> CAPPluginCall? { nil }
+    func releaseCall(_ call: CAPPluginCall) {}
+    func releaseCall(withID: String) {}
+    // swiftlint:disable identifier_name
+    func evalWithPlugin(_ plugin: CAPPlugin, js: String) {}
+    func eval(js: String) {}
+    // swiftlint:enable identifier_name
+    func triggerJSEvent(eventName: String, target: String) {}
+    func triggerJSEvent(eventName: String, target: String, data: String) {}
+    func triggerWindowJSEvent(eventName: String) {}
+    func triggerWindowJSEvent(eventName: String, data: String) {}
+    func triggerDocumentJSEvent(eventName: String) {}
+    func triggerDocumentJSEvent(eventName: String, data: String) {}
+    func localURL(fromWebURL webURL: URL?) -> URL? { webURL }
+    func portablePath(fromLocalURL localURL: URL?) -> URL? { localURL }
+    func setServerBasePath(_ path: String) {}
+    func registerPluginType(_ pluginType: CAPPlugin.Type) {}
+    func registerPluginInstance(_ pluginInstance: CAPPlugin) {}
+    func showAlertWith(title: String, message: String, buttonTitle: String) {}
 }
