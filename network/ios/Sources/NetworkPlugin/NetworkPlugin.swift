@@ -6,7 +6,7 @@ public class NetworkPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "CAPNetworkPlugin"
     public let jsName = "Network"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "getStatus", returnType: .promise)
+        .promise("getStatus", NetworkPlugin.getStatus)
     ]
     private var implementation: Network?
 
@@ -26,7 +26,7 @@ public class NetworkPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func getStatus(_ call: CAPPluginCall) {
+    func getStatus(_ call: CAPPluginCall) {
         guard let implementation else {
             let status = Network.Connection.unavailable
             call.resolve(["connected": status.isConnected, "connectionType": status.jsStringValue])
