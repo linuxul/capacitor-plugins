@@ -27,8 +27,15 @@ public class NetworkPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func getStatus(_ call: CAPPluginCall) {
-        let status = implementation?.currentStatus() ?? Network.Connection.unavailable
-        call.resolve(["connected": status.isConnected, "connectionType": status.jsStringValue])
+        guard let implementation else {
+            let status = Network.Connection.unavailable
+            call.resolve(["connected": status.isConnected, "connectionType": status.jsStringValue])
+            return
+        }
+        // Waits for the monitor's first report when the page asks before it arrives.
+        implementation.currentStatus { status in
+            call.resolve(["connected": status.isConnected, "connectionType": status.jsStringValue])
+        }
     }
 }
 
