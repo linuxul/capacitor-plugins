@@ -81,6 +81,50 @@ final class LocalNotificationsPluginTests: XCTestCase {
                        "Scheduled time must be *after* current time")
     }
 
+    func testScheduleValidationErrorsKeepTheirMessages() {
+        let plugin = LocalNotificationsPlugin()
+        XCTAssertEqual(thrownError(plugin.schedule, "schedule")?.message, "Must provide notifications array as notifications option")
+        let withoutId: JSObject = ["title": "Title", "body": "Body"]
+        let notifications: JSArray = [withoutId]
+        XCTAssertEqual(thrownError(plugin.schedule, "schedule", ["notifications": notifications])?.message, "Notification missing identifier")
+        let past: JSObject = ["id": 1, "title": "Late", "body": "An hour ago", "schedule": ["at": Date().addingTimeInterval(-3600)]]
+        let error = thrownError(plugin.schedule, "schedule", ["notifications": [past] as JSArray])
+        XCTAssertEqual(error?.message, "Scheduled time must be *after* current time")
+        XCTAssertNil(error?.code)
+    }
+
+    func testRemovalsWithoutNotificationsAreRejected() {
+        let plugin = LocalNotificationsPlugin()
+        XCTAssertEqual(thrownError(plugin.cancel, "cancel")?.message, "Must supply notifications to cancel")
+        XCTAssertEqual(thrownError(plugin.cancel, "cancel", ["notifications": [] as JSArray])?.message, "Must supply notifications to cancel")
+        XCTAssertEqual(thrownError(plugin.removeDeliveredNotifications, "removeDeliveredNotifications")?.message,
+                       "Must supply notifications to remove")
+    }
+
+    func testMethodsAndroidAloneImplementsThrowUnimplemented() {
+        let plugin = LocalNotificationsPlugin()
+        let methods: [(String, (CAPPluginCall) throws -> Void)] = [
+            ("checkExactNotificationSetting", plugin.checkExactNotificationSetting),
+            ("changeExactNotificationSetting", plugin.changeExactNotificationSetting),
+            ("createChannel", plugin.createChannel),
+            ("deleteChannel", plugin.deleteChannel),
+            ("listChannels", plugin.listChannels)
+        ]
+        for (name, method) in methods {
+            let error = thrownError(method, name)
+            XCTAssertEqual(error?.message, "not implemented", name)
+            XCTAssertEqual(error?.code, "UNIMPLEMENTED", name)
+        }
+    }
+
+    func testAuthorizationStatusesMapToPermissionStates() {
+        XCTAssertEqual(LocalNotificationsPlugin.displayPermission(for: .authorized), "granted")
+        XCTAssertEqual(LocalNotificationsPlugin.displayPermission(for: .provisional), "granted")
+        XCTAssertEqual(LocalNotificationsPlugin.displayPermission(for: .ephemeral), "granted")
+        XCTAssertEqual(LocalNotificationsPlugin.displayPermission(for: .denied), "denied")
+        XCTAssertEqual(LocalNotificationsPlugin.displayPermission(for: .notDetermined), "prompt")
+    }
+
     func testRegisterActionTypesWithoutTypesIsRejected() {
         XCTAssertEqual(settle(LocalNotificationsPlugin().registerActionTypes, "registerActionTypes", [:]),
                        "Must provide types array as types option")
@@ -119,17 +163,42 @@ final class LocalNotificationsPluginTests: XCTestCase {
         XCTAssertNil(LocalNotificationsPlugin.interruptionLevel("loud"))
     }
 
-    /// Calls `method` and waits for it to settle. Returns the rejection message, or nil when the call resolved.
-    private func settle(_ method: (CAPPluginCall) -> Void, _ name: String, _ options: JSObject) -> String? {
+    /// Calls `method` as the bridge does (an error it throws rejects the call) and waits for the call to settle.
+    /// Returns the rejection message, or nil when the call resolved.
+    private func settle(_ method: (CAPPluginCall) throws -> Void, _ name: String, _ options: JSObject) -> String? {
         let settled = expectation(description: "\(name) settles")
         var rejection: String?
-        method(CAPPluginCall(callbackId: "test", methodName: name, options: options, success: { _, _ in
+        let call = CAPPluginCall(callbackId: "test", methodName: name, options: options, success: { _, _ in
             settled.fulfill()
         }, error: { error in
             rejection = error.message
             settled.fulfill()
-        }))
+        })
+        do {
+            try method(call)
+        } catch {
+            call.reject(error)
+        }
         wait(for: [settled], timeout: timeout)
         return rejection
+    }
+
+    /// The error `method` throws, which the bridge rejects the call with; nil when it does not throw.
+    private func thrownError(_ method: (CAPPluginCall) throws -> Void, _ name: String, _ options: JSObject = [:]) -> CAPPluginError? {
+        let call = CAPPluginCall(callbackId: "test", methodName: name, options: options, success: { _, _ in
+            XCTFail("\(name) must not resolve")
+        }, error: { _ in
+            XCTFail("\(name) answers by throwing")
+        })
+        do {
+            try method(call)
+            XCTFail("\(name) must throw")
+            return nil
+        } catch let error as CAPPluginError {
+            return error
+        } catch {
+            XCTFail("unexpected error \(error)")
+            return nil
+        }
     }
 }
