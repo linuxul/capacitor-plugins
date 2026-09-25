@@ -1,5 +1,6 @@
 import Foundation
 import SafariServices
+import UIKit
 
 @objc public enum BrowserEvent: Int {
     case loaded
@@ -15,23 +16,23 @@ import SafariServices
         return safariViewController
     }
 
+    /// Creates the Safari view controller for `url`. Returns false when a browser is already open or the URL is not
+    /// http(s). Call on the main thread: it creates and configures UIKit objects.
     @objc public func prepare(for url: URL, withTint tint: UIColor? = nil, modalPresentation style: UIModalPresentationStyle = .fullScreen) -> Bool {
-        if safariViewController == nil, let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
-            let safariVC = SFSafariViewController(url: url)
-            safariVC.delegate = self
-            if let color = tint {
-                safariVC.preferredBarTintColor = color
-            }
-            safariVC.modalPresentationStyle = style
-            if style == .popover {
-                DispatchQueue.main.async {
-                    safariVC.popoverPresentationController?.delegate = self
-                }
-            }
-            safariViewController = safariVC
-            return true
+        guard safariViewController == nil, let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
+            return false
         }
-        return false
+        let safariVC = SFSafariViewController(url: url)
+        safariVC.delegate = self
+        if let color = tint {
+            safariVC.preferredBarTintColor = color
+        }
+        safariVC.modalPresentationStyle = style
+        if style == .popover {
+            safariVC.popoverPresentationController?.delegate = self
+        }
+        safariViewController = safariVC
+        return true
     }
 
     @objc public func cleanup() {
@@ -39,8 +40,7 @@ import SafariServices
     }
 
     public func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
-        browserEventDidOccur?(.finished)
-        safariViewController = nil
+        finish()
     }
 
     public func safariViewController(_ controller: SFSafariViewController, didCompleteInitialLoad didLoadSuccessfully: Bool) {
@@ -48,11 +48,19 @@ import SafariServices
     }
 
     public func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-        browserEventDidOccur?(.finished)
-        safariViewController = nil
+        finish()
     }
 
     public func popoverPresentationControllerDidDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) {
+        finish()
+    }
+
+    /// Reports the end of the browser session once, even when UIKit reports the dismissal of a popover through both
+    /// the current and the deprecated delegate method.
+    private func finish() {
+        guard safariViewController != nil else {
+            return
+        }
         browserEventDidOccur?(.finished)
         safariViewController = nil
     }
