@@ -6,10 +6,10 @@ public class ToastPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ToastPlugin"
     public let jsName = "Toast"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "show", returnType: .promise)
+        .promise("show", ToastPlugin.show)
     ]
 
-    @objc func show(_ call: CAPPluginCall) {
+    func show(_ call: CAPPluginCall) {
         guard let text = call.getString("text") else {
             call.reject("text must be provided and must be a string.")
             return
