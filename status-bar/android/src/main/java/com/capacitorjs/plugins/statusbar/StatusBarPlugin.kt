@@ -5,7 +5,9 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Logger
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PluginThread
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.util.WebColor
 import java.util.Locale
@@ -45,55 +47,36 @@ public class StatusBarPlugin : Plugin() {
         implementation.updateStyle()
     }
 
-    @PluginMethod
+    // The setters change the activity's window, which belongs to the main thread
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun setStyle(call: PluginCall) {
-        val style = call.getString("style")
-        if (style == null) {
-            call.reject("Style must be provided")
-            return
-        }
-
-        bridge.executeOnMainThread {
-            implementation.setStyle(style)
-            call.resolve()
-        }
+        val style = call.getString("style") ?: throw PluginException("Style must be provided")
+        implementation.setStyle(style)
+        call.resolve()
     }
 
-    @PluginMethod
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun setBackgroundColor(call: PluginCall) {
-        val color = call.getString("color")
-        if (color == null) {
-            call.reject("Color must be provided")
-            return
-        }
-
-        bridge.executeOnMainThread {
-            try {
-                val parsedColor = WebColor.parseColor(color.uppercase(Locale.ROOT))
-                implementation.setBackgroundColor(parsedColor)
-                call.resolve()
-            } catch (ex: IllegalArgumentException) {
-                call.reject("Invalid color provided. Must be a hex string (ex: #ff0000")
-            }
+        val color = call.getString("color") ?: throw PluginException("Color must be provided")
+        try {
+            val parsedColor = WebColor.parseColor(color.uppercase(Locale.ROOT))
+            implementation.setBackgroundColor(parsedColor)
+            call.resolve()
+        } catch (ex: IllegalArgumentException) {
+            call.reject("Invalid color provided. Must be a hex string (ex: #ff0000")
         }
     }
 
-    @PluginMethod
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun hide(call: PluginCall) {
-        // Hide the status bar.
-        bridge.executeOnMainThread {
-            implementation.hide()
-            call.resolve()
-        }
+        implementation.hide()
+        call.resolve()
     }
 
-    @PluginMethod
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun show(call: PluginCall) {
-        // Show the status bar.
-        bridge.executeOnMainThread {
-            implementation.show()
-            call.resolve()
-        }
+        implementation.show()
+        call.resolve()
     }
 
     @PluginMethod
@@ -101,13 +84,11 @@ public class StatusBarPlugin : Plugin() {
         call.resolve(toJSObject(implementation.getInfo()))
     }
 
-    @PluginMethod
+    @PluginMethod(thread = PluginThread.MAIN)
     public fun setOverlaysWebView(call: PluginCall) {
         val overlay = call.getBoolean("overlay", true) ?: true
-        bridge.executeOnMainThread {
-            implementation.setOverlaysWebView(overlay)
-            call.resolve()
-        }
+        implementation.setOverlaysWebView(overlay)
+        call.resolve()
     }
 
     private fun toJSObject(info: StatusBarInfo): JSObject {
