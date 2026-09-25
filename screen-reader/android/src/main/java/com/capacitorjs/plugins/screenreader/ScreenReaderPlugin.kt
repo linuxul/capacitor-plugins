@@ -21,6 +21,7 @@ public class ScreenReaderPlugin : Plugin() {
 
     override fun handleOnDestroy() {
         screenReader.removeAllListeners()
+        screenReader.shutdown()
     }
 
     @PluginMethod
@@ -34,7 +35,8 @@ public class ScreenReaderPlugin : Plugin() {
     public fun speak(call: PluginCall) {
         val value = call.getString("value")
         val language = call.getString("language") ?: "en"
-        screenReader.speak(value, language)
+        // The text-to-speech engine is kept on the main thread, which is where it reports that it is ready
+        bridge.executeOnMainThread { screenReader.speak(value, language) }
         call.resolve()
     }
 
