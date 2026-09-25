@@ -115,15 +115,17 @@ public class SharePlugin : Plugin() {
         } else if (url != null && isFileUrl(url)) {
             val filesArray = JSArray()
             filesArray.put(url)
-            shareFiles(filesArray, intent, call)
+            if (!shareFiles(filesArray, intent, call)) {
+                return
+            }
         }
 
         if (title != null) {
             intent.putExtra(Intent.EXTRA_SUBJECT, title)
         }
 
-        if (files != null && files.length() != 0) {
-            shareFiles(files, intent, call)
+        if (files != null && files.length() != 0 && !shareFiles(files, intent, call)) {
+            return
         }
 
         // Generate a random nonce to prevent spoofing via exported receiver
@@ -147,7 +149,10 @@ public class SharePlugin : Plugin() {
         startActivityForResult(call, chooser, "activityResult")
     }
 
-    private fun shareFiles(files: JSArray, intent: Intent, call: PluginCall) {
+    /**
+     * Adds the files to the intent. Returns false when it rejected the call, which must then not open the chooser.
+     */
+    private fun shareFiles(files: JSArray, intent: Intent, call: PluginCall): Boolean {
         val fileUris = ArrayList<Uri>()
         try {
             val filesList = files.toList<Any?>()
@@ -156,7 +161,7 @@ public class SharePlugin : Plugin() {
                 val file = item as String
                 if (!isFileUrl(file)) {
                     call.reject("only file urls are supported")
-                    return
+                    return false
                 }
 
                 var type = getMimeType(file)
@@ -179,8 +184,10 @@ public class SharePlugin : Plugin() {
                 intent.putExtra(Intent.EXTRA_STREAM, fileUris[0])
             }
             intent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            return true
         } catch (ex: Exception) {
-            call.reject(ex.localizedMessage)
+            call.reject(ex.localizedMessage, ex = ex)
+            return false
         }
     }
 
