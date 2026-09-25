@@ -220,12 +220,12 @@ export interface PushNotificationSchema {
   badge?: number;
 
   /**
-   * It's not being returned.
+   * It's not being returned: neither iOS nor Android sets it.
    *
    * @deprecated will be removed in next major version.
    * @since 1.0.0
    */
-  notification?: any;
+  notification?: unknown;
 
   /**
    * Any additional data that was included in the

@@ -501,7 +501,7 @@ Remove all native listeners for this plugin.
 | **`id`**           | <code>string</code>  | The notification identifier.                                                                                         | 1.0.0 |
 | **`tag`**          | <code>string</code>  | The notification tag. Only available on Android (from push notifications).                                           | 4.0.0 |
 | **`badge`**        | <code>number</code>  | The number to display for the app icon badge.                                                                        | 1.0.0 |
-| **`notification`** | <code>any</code>     | It's not being returned.                                                                                             | 1.0.0 |
+| **`notification`** | <code>unknown</code> | It's not being returned: neither iOS nor Android sets it.                                                            | 1.0.0 |
 | **`data`**         | <code>any</code>     | Any additional data that was included in the push notification payload.                                              | 1.0.0 |
 | **`click_action`** | <code>string</code>  | The action to be performed on the user opening the notification. Only available on Android.                          | 1.0.0 |
 | **`link`**         | <code>string</code>  | Deep link from the notification. Only available on Android.                                                          | 1.0.0 |
